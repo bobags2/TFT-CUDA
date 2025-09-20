@@ -113,15 +113,21 @@ fi
 
 # Verify installation
 echo "✅ Verifying installation..."
+TFCUDA_IMPORTED=false
 if python -c "import tft_cuda; print('✓ tft_cuda module imported successfully')" 2>/dev/null; then
+    TFCUDA_IMPORTED=true
     echo "   ✓ Python package installation successful"
 else
     echo "   ⚠️  tft_cuda module import failed, but core dependencies are installed"
 fi
 
 # Test basic PyTorch functionality
+TORCH_RUNTIME_CUDA=false
 if python -c "import torch; x = torch.randn(2, 3); print('✓ PyTorch basic test passed')" 2>/dev/null; then
     echo "   ✓ PyTorch basic functionality working"
+    if python -c "import torch, sys; sys.exit(0 if torch.cuda.is_available() else 1)" 2>/dev/null; then
+        TORCH_RUNTIME_CUDA=true
+    fi
 else
     echo "   ❌ PyTorch basic test failed"
     exit 1
@@ -130,12 +136,14 @@ fi
 echo ""
 echo "🎉 Build complete!"
 echo "==================="
-if [ "$CUDA_BUILD_SUCCESS" = true ]; then
-    echo "✓ CUDA kernels built successfully"
-    echo "✓ tft_cuda.so ready for GPU acceleration"
+if [ "$TFCUDA_IMPORTED" = true ] && [ "$TORCH_RUNTIME_CUDA" = true ]; then
+    echo "✓ CUDA backend available (extension loaded, torch.cuda.is_available())"
+elif [ "$TFCUDA_IMPORTED" = true ] && [ "$TORCH_RUNTIME_CUDA" = false ]; then
+    echo "✓ CUDA extension installed; running without GPU (torch.cuda.is_available() == False)"
+    echo "ℹ️  If you expect GPU usage, ensure NVIDIA drivers and CUDA runtime are correctly installed and visible to PyTorch"
 else
-    echo "✓ CPU-only build completed"
-    echo "ℹ️  For CUDA support, ensure CUDA toolkit is installed"
+    echo "✓ CPU-only build; CUDA extension not loaded"
+    echo "ℹ️  For CUDA support, ensure CUDA toolkit is installed and rebuild"
 fi
 echo "✓ Python package installed in development mode"
 echo ""
