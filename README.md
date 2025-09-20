@@ -5,23 +5,27 @@ A high-performance implementation of the Temporal Fusion Transformer (TFT) optim
 ## Features
 
 🚀 **CUDA-Accelerated Operations**
+
 - Custom CUDA kernels for LSTM, Multi-Head Attention, and Quantile heads
 - Mixed-precision training (FP16/FP32) for memory efficiency
 - Optimized memory management and tensor operations
 
 📈 **Financial ML Focus**  
+
 - Multi-asset time-series modeling (ES, VX, ZN futures)
 - Comprehensive feature engineering (30+ financial indicators)
 - Microstructure-aware features (order flow, Kyle's lambda, liquidity proxies)
 - Regime detection and cross-asset correlation analysis
 
 🔍 **Advanced Interpretability**
+
 - Attention weight visualization and temporal importance analysis
 - Variable Selection Network (VSN) feature importance
 - Counterfactual analysis for model understanding
 - Interactive visualizations with Plotly
 
 ⚡ **Production-Ready**
+
 - Quantile loss for probabilistic forecasting
 - Multi-horizon prediction capabilities
 - Robust training with early stopping and gradient clipping
@@ -114,11 +118,13 @@ predictions = model.predict(sample_inputs)
 The system expects 10-minute financial data with the following schema:
 
 ### Input Files
+
 - `es10m.csv` - E-mini S&P 500 Futures
 - `vx10m.csv` - VIX Volatility Index  
 - `zn10m.csv` - 10-Year US Treasury Yield
 
 ### Column Format
+
 ```
 Date, Time, Open, High, Low, Last, Volume, NumberOfTrades, BidVolume, AskVolume
 ```
@@ -128,27 +134,32 @@ Date, Time, Open, High, Low, Last, Volume, NumberOfTrades, BidVolume, AskVolume
 The system automatically generates 30+ features including:
 
 **Price & Volume Features**
+
 - Log returns at multiple lags
 - Price ranges and volatility measures
 - Volume z-scores and ratios
 
 **Microstructure Features**
+
 - Order Flow Imbalance (OFI)
 - Kyle's Lambda proxy
 - Bid-ask spread and skew
 - Liquidity depth proxies
 
 **Technical Indicators**
+
 - RSI, MACD, Bollinger Bands
 - Moving averages and crossovers
 - VWAP and ATR
 
 **Cross-Asset Features**
+
 - VIX regime classification
 - Cross-asset correlations
 - Divergence signals
 
 **Time-Based Features**
+
 - Market session indicators
 - Intraday patterns
 - Economic calendar events
@@ -176,6 +187,7 @@ When CUDA is available, the following operations are accelerated:
 ## Configuration
 
 ### Model Configuration
+
 ```python
 config = {
     'input_size': 64,           # Number of input features
@@ -189,6 +201,7 @@ config = {
 ```
 
 ### Training Configuration
+
 ```python
 training_config = {
     'optimizer': 'adamw',
@@ -273,6 +286,6 @@ Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for gui
 
 ## Support
 
-- 📧 Email: contact@tft-cuda.com
+- 📧 Email: <contact@tft-cuda.com>
 - 🐛 Issues: [GitHub Issues](https://github.com/bobags2/TFT-CUDA/issues)
 - 📖 Documentation: [ReadTheDocs](https://tft-cuda.readthedocs.io/)

@@ -1,7 +1,8 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # scripts/debug.sh - Debug common issues
 
 set +e  # Don't exit on errors - we want to diagnose them
+IFS=$'\n\t'
 
 echo "🔍 TFT-CUDA Debug Script"
 echo "========================"
@@ -153,7 +154,7 @@ echo "📊 Data Files Check"
 echo "------------------"
 if [ -d "data" ]; then
     echo "   Data directory contents:"
-    ls -la data/ | while read line; do
+    ls -la data/ | while read -r line; do
         echo "     $line"
     done
     

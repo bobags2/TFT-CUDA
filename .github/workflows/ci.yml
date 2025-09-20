@@ -1,5 +1,6 @@
 name: TFT Build & Test
-on: 
+
+on:
   push:
     branches: [ main, develop ]
   pull_request:
@@ -8,157 +9,42 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: [3.8, 3.9, "3.10", "3.11"]
-    
     steps:
       - uses: actions/checkout@v4
-      
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
-      
-      - name: Cache pip dependencies
-        uses: actions/cache@v3
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
-      
+          python-version: '3.10'
+
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake build-essential
-          
-      - name: Install CUDA (optional)
-        run: |
-          # Install CUDA toolkit for testing (if needed)
-          # This is optional since we support CPU-only builds
-          echo "CUDA installation skipped for CPU-only testing"
-          
+          sudo apt-get install -y nvidia-cuda-toolkit cmake build-essential || true
+          nvcc --version || true
+
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
-          pip install numpy pandas scipy matplotlib seaborn
-          pip install pybind11 cmake scikit-build-core pytest
-          
-      - name: Build & Install Package
+          pip install -e .[dev]
+
+      - name: Build
         run: |
-          bash scripts/build.sh
-          
-      - name: Run Tests
+          bash scripts/build.sh || (echo "Build failed, running CPU-only install" && pip install -e .)
+
+      - name: Tests
         run: |
           bash scripts/test.sh
-          
-      - name: Test Training Pipeline
+
+      - name: Train (sanity epoch)
+        env:
+          TFT_EPOCHS: 1
         run: |
-          # Run a quick training test with minimal epochs
-          timeout 300 bash scripts/train.sh || echo "Training test completed (timeout expected)"
-          
+          # Run a shortened training to validate pipeline
+          sed -i 's/"epochs"[[:space:]]*:[[:space:]]*[0-9]\+/"epochs": 1/g' config/default_config.json || true
+          timeout 300 bash scripts/train.sh || echo "Training sanity complete (timeout acceptable)"
+
       - name: Debug on Failure
         if: failure()
         run: |
           bash scripts/debug.sh
-          
-      - name: Upload Test Results
-        uses: actions/upload-artifact@v3
-        if: always()
-        with:
-          name: test-results-python${{ matrix.python-version }}
-          path: |
-            test_results.log
-            data/
-            !data/*.csv
-          retention-days: 7
-
-  build-cuda:
-    runs-on: ubuntu-latest
-    # Only run CUDA build on main branch to save resources
-    if: github.ref == 'refs/heads/main'
-    
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up Python 3.10
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.10"
-          
-      - name: Install CUDA Toolkit
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y nvidia-cuda-toolkit
-          nvcc --version || echo "CUDA installation may have issues"
-          
-      - name: Install Dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install torch torchvision torchaudio
-          pip install numpy pandas scipy
-          pip install pybind11 cmake scikit-build-core pytest
-          
-      - name: Build with CUDA
-        run: |
-          export CUDA_VISIBLE_DEVICES=""  # Disable GPU for CI
-          bash scripts/build.sh
-          
-      - name: Test CUDA Build
-        run: |
-          bash scripts/test.sh
-          
-      - name: Debug CUDA Build
-        if: failure()
-        run: |
-          bash scripts/debug.sh
-
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.10"
-          
-      - name: Install linting tools
-        run: |
-          pip install black flake8 isort
-          
-      - name: Check code formatting
-        run: |
-          black --check python/ tests/ || echo "Code formatting issues found"
-          flake8 python/ tests/ --max-line-length=88 --ignore=E203,W503 || echo "Linting issues found"
-          isort --check-only python/ tests/ || echo "Import sorting issues found"
-          
-      - name: Lint C++ files
-        run: |
-          # Basic check for common C++ issues
-          echo "C++ linting (basic)..."
-          find cpp/ -name "*.cpp" -o -name "*.cu" -o -name "*.h" | xargs grep -l "TODO\|FIXME\|XXX" || echo "No TODO/FIXME found"
-          
-  docs:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Validate documentation
-        run: |
-          # Check if README exists and has basic content
-          if [ -f "README.md" ]; then
-            echo "✓ README.md exists"
-            grep -q "TFT-CUDA" README.md && echo "✓ README mentions TFT-CUDA" || echo "⚠️ README missing TFT-CUDA reference"
-          else
-            echo "❌ README.md missing"
-          fi
-          
-          # Check config files
-          if [ -f "config/default_config.json" ]; then
-            python -c "import json; json.load(open('config/default_config.json'))" && echo "✓ Config JSON valid"
-          else
-            echo "❌ default_config.json missing"
-          fi

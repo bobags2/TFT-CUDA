@@ -1,0 +1,32 @@
+[build-system]
+requires = [
+	"setuptools>=61",
+	"wheel",
+	"pybind11>=2.11",
+	"scikit-build-core>=0.10",
+	"cmake>=3.20",
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tft-cuda"
+version = "0.1.0"
+description = "Temporal Fusion Transformer with CUDA acceleration for financial forecasting"
+authors = [{ name = "TFT-CUDA Team" }]
+requires-python = ">=3.8"
+dependencies = [
+	"torch>=1.13.0",
+	"numpy>=1.21.0",
+	"pandas>=1.3.0",
+	"scipy>=1.7.0",
+	"matplotlib>=3.5.0",
+	"seaborn>=0.11.0",
+	"scikit-learn>=1.0.0",
+	"tqdm>=4.62.0",
+	"tensorboard>=2.8.0",
+]
+
+[tool.setuptools]
+packages = { find = { where = ["python"] } }
+package-dir = { "" = "python" }
+

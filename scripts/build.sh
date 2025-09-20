@@ -1,7 +1,8 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # scripts/build.sh - Full build & install for TFT-CUDA
 
-set -e  # Exit on any error
+set -Eeuo pipefail
+IFS=$'\n\t'
 
 echo "🚀 TFT-CUDA Build Script"
 echo "========================"
@@ -83,7 +84,7 @@ if [ "$CUDA_AVAILABLE" = true ]; then
         
         # Build
         echo "   Building with make..."
-        if make -j$(nproc) 2>/dev/null; then
+        if make -j"$(nproc)" 2>/dev/null; then
             echo "   ✓ CUDA build successful"
             CUDA_BUILD_SUCCESS=true
         else
