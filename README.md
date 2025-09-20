@@ -27,17 +27,46 @@ A high-performance implementation of the Temporal Fusion Transformer (TFT) optim
 - Robust training with early stopping and gradient clipping
 - Comprehensive logging and checkpointing
 
-## Quick Start
+## 🚀 Quickstart
 
-### Installation
+### One-Click Setup
+
+```bash
+# 1. Build CUDA & install
+bash scripts/build.sh
+
+# 2. Train model
+bash scripts/train.sh
+
+# 3. Run tests
+bash scripts/test.sh
+
+# 4. Debug (if needed)
+bash scripts/debug.sh
+```
+
+### Even Simpler with Make
+
+```bash
+# Build, train, and test everything
+make all
+
+# Or run individual steps
+make build
+make train
+make test
+make debug
+```
+
+### Traditional Installation
 
 ```bash
 # Clone the repository
 git clone https://github.com/bobags2/TFT-CUDA.git
 cd TFT-CUDA
 
-# Install dependencies
-pip install -r requirements.txt
+# Install dependencies (handled automatically by build.sh)
+pip install torch numpy pandas pybind11
 
 # Install package (with CUDA support if available)
 pip install -e .
