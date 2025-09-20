@@ -408,9 +408,12 @@ class FinancialDataset:
             # VIX regime (volatility)
             vix_close = 'vx_close'
             if vix_close in data.columns:
-                vix_quantiles = data[vix_close].rolling(252).quantile([0.2, 0.8])  # 252 periods for percentiles
-                data['vix_regime_low'] = (data[vix_close] <= data[vix_close].rolling(252).quantile(0.2)).astype(float)
-                data['vix_regime_high'] = (data[vix_close] >= data[vix_close].rolling(252).quantile(0.8)).astype(float)
+                # Calculate quantiles separately
+                vix_20 = data[vix_close].rolling(252).quantile(0.2)
+                vix_80 = data[vix_close].rolling(252).quantile(0.8)
+                
+                data['vix_regime_low'] = (data[vix_close] <= vix_20).astype(float)
+                data['vix_regime_high'] = (data[vix_close] >= vix_80).astype(float)
                 data['vix_regime_medium'] = (1 - data['vix_regime_low'] - data['vix_regime_high'])
                 
                 # VIX-ES ratio
@@ -605,9 +608,19 @@ class FinancialDataset:
         if filepath is None:
             filepath = self.data_dir / "features.parquet"
         
-        # Save main data
-        data.to_parquet(filepath)
-        print(f"Saved processed data to {filepath}")
+        # Ensure directory exists
+        Path(filepath).parent.mkdir(parents=True, exist_ok=True)
+        
+        # Try to save as parquet, fallback to CSV
+        try:
+            data.to_parquet(filepath)
+            print(f"Saved processed data to {filepath}")
+        except ImportError:
+            # Fallback to CSV if parquet not available
+            csv_filepath = str(filepath).replace('.parquet', '.csv')
+            data.to_csv(csv_filepath)
+            print(f"Saved processed data to {csv_filepath} (parquet not available)")
+            filepath = csv_filepath
         
         # Save feature metadata
         metadata = {

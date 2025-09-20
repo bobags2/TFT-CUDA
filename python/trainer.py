@@ -34,6 +34,15 @@ try:
     from .tft_model import TemporalFusionTransformer
     from .loss import create_tft_loss, MultiHorizonLoss
     from .data import TFTDataset
+except ImportError:
+    # Handle relative import issues in standalone execution
+    import tft_model
+    import loss
+    import data
+    TemporalFusionTransformer = tft_model.TemporalFusionTransformer
+    create_tft_loss = loss.create_tft_loss
+    MultiHorizonLoss = loss.MultiHorizonLoss
+    TFTDataset = data.TFTDataset
 
 
 class EarlyStopping:
@@ -607,7 +616,10 @@ def create_training_config(**kwargs) -> Dict[str, Any]:
 
 if __name__ == "__main__":
     try:
-    from .tft_model import create_tft_config
+        from .tft_model import create_tft_config
+    except ImportError:
+        import tft_model
+        create_tft_config = tft_model.create_tft_config
     
     print("TFT Trainer Test")
     print("=" * 20)
@@ -629,13 +641,10 @@ if __name__ == "__main__":
     
     # Create trainer
     training_config = create_training_config(epochs=5, log_interval=10)
-    trainer = TFTTrainer(model, training_config)
+    tft_trainer = TFTTrainer(model, training_config)
     
     # Train for a few epochs
     print(f"Training on {training_config['device']}")
-    history = trainer.train(train_loader, epochs=5)
+    history = tft_trainer.train(train_loader, epochs=5)
     
-    print("Training completed successfully!")except ImportError:
-    import tft_model
-    import loss
-    import data
+    print("Training completed successfully!")
