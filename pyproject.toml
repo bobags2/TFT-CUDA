@@ -14,6 +14,29 @@ version = "0.1.0"
 description = "Temporal Fusion Transformer with CUDA acceleration for financial forecasting"
 authors = [{ name = "TFT-CUDA Team" }]
 requires-python = ">=3.8"
+readme = { file = "README.md", content-type = "text/markdown" }
+classifiers = [
+	"Development Status :: 3 - Alpha",
+	"Intended Audience :: Developers",
+	"Intended Audience :: Science/Research",
+	"License :: OSI Approved :: MIT License",
+	"Operating System :: POSIX :: Linux",
+	"Programming Language :: Python :: 3",
+	"Programming Language :: Python :: 3.8",
+	"Programming Language :: Python :: 3.9",
+	"Programming Language :: Python :: 3.10",
+	"Programming Language :: Python :: 3.11",
+	"Programming Language :: Python :: 3.12",
+	"Programming Language :: C++",
+	"Programming Language :: CUDA",
+	"Topic :: Scientific/Engineering :: Artificial Intelligence",
+	"Topic :: Office/Business :: Financial",
+]
+urls = { 
+	"Bug Reports" = "https://github.com/bobags2/TFT-CUDA/issues",
+	"Source" = "https://github.com/bobags2/TFT-CUDA",
+	"Documentation" = "https://tft-cuda.readthedocs.io/"
+}
 dependencies = [
 	"torch>=1.13.0",
 	"numpy>=1.21.0",
@@ -26,7 +49,40 @@ dependencies = [
 	"tensorboard>=2.8.0",
 ]
 
+[project.optional-dependencies]
+dev = [
+	"pytest>=6.0.0",
+	"pytest-cov>=2.12.0",
+	"black>=21.0.0",
+	"flake8>=3.9.0",
+	"mypy>=0.910",
+	"pre-commit>=2.15.0",
+]
+viz = [
+	"plotly>=5.0.0",
+	"dash>=2.0.0",
+	"ipywidgets>=7.6.0",
+]
+wandb = [
+	"wandb>=0.12.0",
+]
+all = [
+	"plotly>=5.0.0",
+	"dash>=2.0.0",
+	"ipywidgets>=7.6.0",
+	"wandb>=0.12.0",
+	"pytest>=6.0.0",
+	"pytest-cov>=2.12.0",
+	"black>=21.0.0",
+	"flake8>=3.9.0",
+	"mypy>=0.910",
+	"pre-commit>=2.15.0",
+]
+
 [tool.setuptools]
-packages = { find = { where = ["python"] } }
-package-dir = { "" = "python" }
+packages = ["tft_cuda"]
+package-dir = { "tft_cuda" = "python" }
+
+[tool.setuptools.package-data]
+"tft_cuda" = ["*.json", "*.yaml", "*.yml", "*.md"]
 
