@@ -1,7 +1,8 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # scripts/train.sh - Train the TFT model
 
-set -e  # Exit on any error
+set -Eeuo pipefail
+IFS=$'\n\t'
 
 echo "🚀 TFT-CUDA Training Script"
 echo "==========================="
@@ -197,7 +198,7 @@ try:
         print(f'   ⚠️  TFT model creation failed: {e}')
         print('   Using simple LSTM baseline...')
         
-        # Simple LSTM fallback
+    # Simple LSTM fallback
         import torch.nn as nn
         class SimpleLSTM(nn.Module):
             def __init__(self, input_size, hidden_size=64, num_layers=1):

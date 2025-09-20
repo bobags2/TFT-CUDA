@@ -1,7 +1,8 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # scripts/test.sh - Run unit tests
 
-set -e  # Exit on any error
+set -Eeuo pipefail
+IFS=$'\n\t'
 
 echo "🧪 TFT-CUDA Testing Script"
 echo "=========================="

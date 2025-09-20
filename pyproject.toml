@@ -32,11 +32,7 @@ classifiers = [
 	"Topic :: Scientific/Engineering :: Artificial Intelligence",
 	"Topic :: Office/Business :: Financial",
 ]
-urls = { 
-	"Bug Reports" = "https://github.com/bobags2/TFT-CUDA/issues",
-	"Source" = "https://github.com/bobags2/TFT-CUDA",
-	"Documentation" = "https://tft-cuda.readthedocs.io/"
-}
+urls = { "Bug Reports" = "https://github.com/bobags2/TFT-CUDA/issues", "Source" = "https://github.com/bobags2/TFT-CUDA", "Documentation" = "https://tft-cuda.readthedocs.io/" }
 dependencies = [
 	"torch>=1.13.0",
 	"numpy>=1.21.0",
