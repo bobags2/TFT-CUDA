@@ -1,0 +1,68 @@
+{
+  "ensemble": {
+    "name": "TFT-XLSTM-Ensemble",
+    "description": "Ensemble combining TFT and xLSTM models for enhanced financial forecasting",
+    "models": [
+      {
+        "name": "TFT",
+        "weight": 0.6,
+        "config_path": "config/tft_config.json"
+      },
+      {
+        "name": "xLSTM",
+        "weight": 0.4,
+        "config_path": "config/xlstm_config.json"
+      }
+    ],
+    "combination_method": "weighted_average",
+    "meta_learner": {
+      "enabled": false,
+      "type": "linear",
+      "features": ["model_confidence", "market_regime", "volatility"]
+    }
+  },
+  "training": {
+    "strategy": "sequential",
+    "individual_training": {
+      "TFT": {
+        "epochs": 100,
+        "early_stopping_patience": 15
+      },
+      "xLSTM": {
+        "epochs": 80,
+        "early_stopping_patience": 12
+      }
+    },
+    "ensemble_training": {
+      "enabled": true,
+      "fine_tune_epochs": 20,
+      "learning_rate": 1e-4
+    }
+  },
+  "evaluation": {
+    "metrics": [
+      "quantile_loss",
+      "mse", 
+      "mae",
+      "sharpe_ratio",
+      "max_drawdown",
+      "hit_rate",
+      "coverage_ratio"
+    ],
+    "backtesting": {
+      "enabled": true,
+      "walk_forward": true,
+      "rebalance_frequency": "monthly",
+      "transaction_costs": 0.001
+    }
+  },
+  "inference": {
+    "mode": "ensemble",
+    "confidence_intervals": true,
+    "uncertainty_quantification": true,
+    "real_time": {
+      "enabled": false,
+      "latency_target_ms": 50
+    }
+  }
+}

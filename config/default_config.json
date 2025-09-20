@@ -1,0 +1,95 @@
+{
+  "model": {
+    "name": "TFT-Financial",
+    "description": "Temporal Fusion Transformer for financial forecasting",
+    "version": "0.1.0",
+    "architecture": {
+      "hidden_size": 256,
+      "num_heads": 8,
+      "num_lstm_layers": 1,
+      "dropout_rate": 0.1,
+      "sequence_length": 100,
+      "quantile_levels": [0.1, 0.5, 0.9],
+      "prediction_horizon": [1, 5, 10]
+    },
+    "features": {
+      "static_features": [
+        "asset_type",
+        "market_regime",
+        "volatility_regime",
+        "economic_regime"
+      ],
+      "dynamic_features": [
+        "price_features",
+        "volume_features", 
+        "microstructure_features",
+        "technical_indicators",
+        "cross_asset_features",
+        "time_features"
+      ]
+    }
+  },
+  "data": {
+    "assets": ["es", "vx", "zn"],
+    "frequency": "10min",
+    "lookback_window": 100,
+    "preprocessing": {
+      "normalization": "robust",
+      "handle_missing": "forward_fill",
+      "outlier_detection": true,
+      "feature_selection": "VSN"
+    },
+    "splits": {
+      "train": 0.7,
+      "validation": 0.15,
+      "test": 0.15
+    }
+  },
+  "training": {
+    "optimizer": {
+      "type": "adamw",
+      "learning_rate": 1e-3,
+      "weight_decay": 1e-4,
+      "betas": [0.9, 0.999]
+    },
+    "scheduler": {
+      "type": "onecycle",
+      "max_lr": 1e-2,
+      "pct_start": 0.3
+    },
+    "loss": {
+      "type": "quantile",
+      "quantile_levels": [0.1, 0.5, 0.9],
+      "loss_weights": [1.0, 1.0, 1.0]
+    },
+    "regularization": {
+      "gradient_clipping": 1.0,
+      "early_stopping": {
+        "patience": 15,
+        "min_delta": 1e-6
+      }
+    },
+    "batch_size": 64,
+    "epochs": 100,
+    "validation_frequency": 1
+  },
+  "cuda": {
+    "enabled": true,
+    "mixed_precision": true,
+    "architecture": "auto",
+    "memory_optimization": true
+  },
+  "logging": {
+    "level": "INFO",
+    "tensorboard": true,
+    "wandb": false,
+    "checkpoint_frequency": 10,
+    "log_frequency": 100
+  },
+  "interpretability": {
+    "attention_analysis": true,
+    "feature_importance": true,
+    "counterfactual_analysis": true,
+    "temporal_importance": true
+  }
+}
