@@ -28,9 +28,9 @@ def test_financial_dataset():
     raw_data = dataset.load_data()
     
     assert len(raw_data) == 3, f"Expected 3 assets, got {len(raw_data)}"
-    assert 'es' in raw_data, "ES data not found"
-    assert 'vx' in raw_data, "VX data not found" 
-    assert 'zn' in raw_data, "ZN data not found"
+    assert 'es' in data, "ES data not found"
+    assert 'vx' in data, "VX data not found" 
+    assert 'zn' in data, "ZN data not found"
     
     # Test merging
     merged_data = dataset.merge_datasets()

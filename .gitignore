@@ -103,3 +103,11 @@ temp/
 .kiro/steering/byterover-rules.md
 .qoder/rules/byterover-rules.md
 .augment/rules/byterover-rules.md
+data/y_val.npy
+data/y_val.npy
+data/y_val.npy
+data/X_train.npy
+data/y_val.npy
+data/y_train.npy
+data/X_val.npy
+data/X_train.npy

@@ -23,9 +23,10 @@ except ImportError:
 try:
     from scipy import stats
     SCIPY_AVAILABLE = True
-except ImportError:
+except (ImportError, KeyboardInterrupt):
     SCIPY_AVAILABLE = False
-    print("Warning: SciPy not available. Some statistical features will be disabled.")
+    # Silently disable SciPy features instead of printing warning
+    stats = None
 
 
 class FinancialDataset:
@@ -72,11 +73,15 @@ class FinancialDataset:
             Dict of DataFrames with asset data
         """
         if file_patterns is None:
-            file_patterns = {
-                'es': 'es10m.csv',
-                'vx': 'vx10m.csv', 
-                'zn': 'zn10m.csv'
-            }
+            # Try to find actual data files with glob patterns
+            import glob
+            file_patterns = {}
+            for asset in ['es', 'vx', 'zn']:
+                matches = list(self.data_dir.glob(f'{asset}10m*.csv'))
+                if matches:
+                    file_patterns[asset] = matches[0].name
+                else:
+                    file_patterns[asset] = f'{asset}10m.csv'  # fallback
         
         for asset, pattern in file_patterns.items():
             file_path = self.data_dir / pattern
@@ -84,12 +89,34 @@ class FinancialDataset:
                 print(f"Loading {asset} data from {file_path}")
                 df = pd.read_csv(file_path)
                 
-                # Parse timestamp - combine Date and Time columns
-                if 'Date' in df.columns and ' Time' in df.columns:
-                    df['timestamp'] = pd.to_datetime(
-                        df['Date'] + ' ' + df[' Time'].astype(str),
-                        format='%Y%m%d %H:%M:%S'
-                    )
+                # Clean column names by stripping whitespace
+                df.columns = df.columns.str.strip()
+                
+                # Parse timestamp - handle multiple date formats
+                if 'Date' in df.columns and 'Time' in df.columns:
+                    # Handle format like "2018/12/31, 16:25:00"
+                    try:
+                        df['timestamp'] = pd.to_datetime(
+                            df['Date'].astype(str) + ' ' + df['Time'].astype(str),
+                            format='%Y/%m/%d %H:%M:%S'
+                        )
+                    except ValueError:
+                        # Fallback to automatic parsing
+                        df['timestamp'] = pd.to_datetime(
+                            df['Date'].astype(str) + ' ' + df['Time'].astype(str)
+                        )
+                elif 'Date' in df.columns and 'Time' in df.columns:
+                    # Handle format without space in column name
+                    try:
+                        df['timestamp'] = pd.to_datetime(
+                            df['Date'].astype(str) + ' ' + df['Time'].astype(str),
+                            format='%Y%m%d %H:%M:%S'
+                        )
+                    except ValueError:
+                        # Fallback to automatic parsing
+                        df['timestamp'] = pd.to_datetime(
+                            df['Date'].astype(str) + ' ' + df['Time'].astype(str)
+                        )
                 elif 'timestamp' not in df.columns:
                     # Assume first column is timestamp
                     df['timestamp'] = pd.to_datetime(df.iloc[:, 0])
@@ -109,6 +136,9 @@ class FinancialDataset:
     
     def _standardize_columns(self, df: pd.DataFrame, asset: str) -> pd.DataFrame:
         """Standardize column names across assets."""
+        # Clean column names by stripping whitespace
+        df.columns = df.columns.str.strip()
+        
         # Common column mappings
         column_mapping = {
             'Open': f'{asset}_open',
@@ -129,7 +159,8 @@ class FinancialDataset:
         
         # Keep timestamp and standardized columns
         keep_columns = ['timestamp'] + [col for col in df.columns if col.startswith(f'{asset}_')]
-        return df[keep_columns]
+        available_columns = [col for col in keep_columns if col in df.columns]
+        return df[available_columns]
     
     def _create_sample_data(self, asset: str) -> pd.DataFrame:
         """Create sample data for testing when real data is not available."""

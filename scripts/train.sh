@@ -25,14 +25,15 @@ mkdir -p data
 
 # Check for data files
 echo "📊 Checking data availability..."
-data_files=("es10m.csv" "vx10m.csv" "zn10m.csv")
+data_patterns=("es10m" "vx10m" "zn10m")
 data_found=0
-for file in "${data_files[@]}"; do
-    if ls data/*${file}* >/dev/null 2>&1; then
-        echo "   ✓ Found ${file} data"
+for pattern in "${data_patterns[@]}"; do
+    if ls data/${pattern}*.csv >/dev/null 2>&1; then
+        actual_file=$(ls data/${pattern}*.csv | head -1)
+        echo "   ✓ Found ${pattern} data: $(basename "$actual_file")"
         data_found=$((data_found + 1))
     else
-        echo "   ⚠️  ${file} not found"
+        echo "   ⚠️  ${pattern}*.csv not found"
     fi
 done
 
@@ -57,6 +58,27 @@ try:
         with open(config_path, 'r') as f:
             config = json.load(f)
         print('   ✓ Loaded configuration from config/default_config.json')
+        
+        # Extract model config from nested structure
+        model_config = config.get('model', {}).get('architecture', {})
+        training_config = config.get('training', {})
+        
+        # Flatten for easier access
+        flat_config = {
+            'model': {
+                'hidden_size': model_config.get('hidden_size', 64),
+                'num_heads': model_config.get('num_heads', 4),
+                'sequence_length': model_config.get('sequence_length', 50),
+                'quantile_levels': model_config.get('quantile_levels', [0.1, 0.5, 0.9]),
+                'prediction_horizon': model_config.get('prediction_horizon', [1, 5, 10])
+            },
+            'training': {
+                'batch_size': training_config.get('batch_size', 16),
+                'epochs': training_config.get('epochs', 10),
+                'learning_rate': training_config.get('optimizer', {}).get('learning_rate', 1e-3)
+            }
+        }
+        config = flat_config
     else:
         # Create basic config
         config = {
