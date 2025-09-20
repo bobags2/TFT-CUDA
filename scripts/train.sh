@@ -240,14 +240,35 @@ try:
     # Setup training
     try:
         from trainer import TFTTrainer, create_training_config
+        from torch.utils.data import DataLoader
+        from data import TFTDataset
+        
         training_config = create_training_config(
             epochs=10,
             batch_size=16,
             learning_rate=1e-3,
-            device='cpu'
+            device='cuda' if torch.cuda.is_available() else 'cpu',
+            checkpoint_dir='checkpoints',
+            log_interval=50
         )
         trainer = TFTTrainer(model, training_config)
         print('   ✓ Using TFT trainer')
+        
+        # Create DataLoaders
+        train_dataset = TFTDataset(X_train, y_train)
+        val_dataset = TFTDataset(X_val, y_val)
+        
+        train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True)
+        val_loader = DataLoader(val_dataset, batch_size=16, shuffle=False)
+        
+        print(f'   Starting training on {training_config["device"]}...')
+        
+        # Actually train the model!
+        history = trainer.train(train_loader, val_loader, epochs=10)
+        
+        print('   ✓ Training completed successfully!')
+        print(f'   Final train loss: {history["train_loss"][-1]:.6f}')
+        print(f'   Final val loss: {history["val_loss"][-1]:.6f}')
     except Exception as e:
         print(f'   ⚠️  TFT trainer failed: {e}')
         print('   Using simple training loop...')

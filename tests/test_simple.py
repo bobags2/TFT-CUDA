@@ -16,8 +16,8 @@ def test_data_module():
     try:
         import data
         
-        # Create dataset
-        dataset = data.FinancialDataset(data_dir="/tmp/test_data")
+        # Create dataset with actual data directory
+        dataset = data.FinancialDataset(data_dir="data/")
         
         # Test sample data creation
         sample_data = dataset._create_sample_data('es')
@@ -114,8 +114,8 @@ def test_end_to_end():
         import tft_model
         import loss
         
-        # 1. Create sample dataset
-        dataset = data.FinancialDataset(data_dir="/tmp/test_data")
+        # 1. Create sample dataset with actual data directory
+        dataset = data.FinancialDataset(data_dir="data/")
         
         # Create minimal data for testing
         sample_data = {}

@@ -21,8 +21,8 @@ def test_financial_dataset():
     """Test financial dataset creation and processing."""
     print("Testing FinancialDataset...")
     
-    # Create dataset with sample data (since real data may not be available)
-    dataset = data.FinancialDataset(data_dir="/tmp/test_data")
+    # Create dataset with actual data directory
+    dataset = data.FinancialDataset(data_dir="data/")
     
     # Load data (will create sample data)
     raw_data = dataset.load_data()
@@ -134,8 +134,8 @@ def test_integration():
     """Test full integration pipeline."""
     print("Testing integration pipeline...")
     
-    # 1. Create dataset
-    dataset = data.FinancialDataset(data_dir="/tmp/test_data")
+    # 1. Create dataset using actual data directory
+    dataset = data.FinancialDataset(data_dir="data/")
     raw_data = dataset.load_data()
     merged_data = dataset.merge_datasets()
     processed_data = dataset.engineer_features(merged_data)

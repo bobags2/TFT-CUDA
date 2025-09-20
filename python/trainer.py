@@ -42,11 +42,21 @@ try:
     from .tft_model import TemporalFusionTransformer
     from .loss import create_tft_loss, MultiHorizonLoss
     from .data import TFTDataset
+    from .lr_scheduler import FinancialLRScheduler, LRFinder, find_optimal_lr
 except ImportError:
     # Handle relative import issues in standalone execution
     import tft_model
     import loss
     import data
+    try:
+        import lr_scheduler
+        FinancialLRScheduler = lr_scheduler.FinancialLRScheduler
+        LRFinder = lr_scheduler.LRFinder
+        find_optimal_lr = lr_scheduler.find_optimal_lr
+    except ImportError:
+        FinancialLRScheduler = None
+        LRFinder = None
+        find_optimal_lr = None
     TemporalFusionTransformer = tft_model.TemporalFusionTransformer
     create_tft_loss = loss.create_tft_loss
     MultiHorizonLoss = loss.MultiHorizonLoss
@@ -243,13 +253,49 @@ class TFTTrainer:
         else:
             raise ValueError(f"Unknown optimizer: {optimizer_type}")
     
-    def _create_scheduler(self) -> Optional[optim.lr_scheduler._LRScheduler]:
+    def _create_scheduler(self) -> Optional[Any]:
         """Create learning rate scheduler."""
         scheduler_type = self.config.get('scheduler', 'onecycle')
         
-        if scheduler_type is None:
+        if scheduler_type is None or scheduler_type == 'none':
             return None
-        elif scheduler_type.lower() == 'onecycle':
+        
+        # Try to use FinancialLRScheduler if available
+        if 'FinancialLRScheduler' in globals() and FinancialLRScheduler is not None:
+            # Calculate total steps for OneCycle
+            total_steps = self.config.get('total_steps')
+            if total_steps is None and scheduler_type == 'onecycle':
+                epochs = self.config.get('epochs', 100)
+                batch_size = self.config.get('batch_size', 64)
+                estimated_batches = 1000
+                total_steps = epochs * estimated_batches
+            
+            scheduler_configs = {
+                'onecycle': {
+                    'strategy': 'onecycle',
+                    'max_lr': self.config.get('max_lr', 1e-2),
+                    'total_steps': total_steps,
+                    'pct_start': self.config.get('pct_start', 0.3)
+                },
+                'cosine_restarts': {
+                    'strategy': 'cosine_restarts',
+                    'T_0': self.config.get('T_0', 10),
+                    'T_mult': self.config.get('T_mult', 2)
+                },
+                'plateau': {
+                    'strategy': 'plateau',
+                    'mode': 'min',
+                    'factor': 0.5,
+                    'patience': 10
+                }
+            }
+            
+            if scheduler_type in scheduler_configs:
+                return FinancialLRScheduler(self.optimizer, **scheduler_configs[scheduler_type])
+        
+        # Fallback to PyTorch schedulers
+        # Fallback to PyTorch schedulers
+        if scheduler_type.lower() == 'onecycle':
             return optim.lr_scheduler.OneCycleLR(
                 self.optimizer,
                 max_lr=self.config.get('max_lr', 1e-2),
@@ -270,7 +316,40 @@ class TFTTrainer:
                 verbose=True
             )
         else:
-            raise ValueError(f"Unknown scheduler: {scheduler_type}")
+            return None
+    
+    def find_lr(self, train_loader, num_iter: int = 100,
+                start_lr: float = 1e-7, end_lr: float = 10) -> Tuple[float, Any]:
+        """
+        Find optimal learning rate using LR range test.
+        
+        Returns:
+            Tuple of (suggested_lr, lr_finder_object)
+        """
+        if 'LRFinder' not in globals() or LRFinder is None:
+            print("LRFinder not available. Using default learning rate.")
+            return self.config.get('learning_rate', 1e-3), None
+        
+        print("Running LR Range Test...")
+        lr_finder = LRFinder(self.model, self.optimizer, self.loss_fn, self.device)
+        lr_finder.range_test(
+            train_loader,
+            start_lr=start_lr,
+            end_lr=end_lr,
+            num_iter=num_iter
+        )
+        
+        suggested_lr = lr_finder.suggestion()
+        print(f"\nSuggested learning rate: {suggested_lr:.2e}")
+        
+        # Update optimizer with new LR
+        for param_group in self.optimizer.param_groups:
+            param_group['lr'] = suggested_lr
+        
+        # Update config
+        self.config['learning_rate'] = suggested_lr
+        
+        return suggested_lr, lr_finder
     
     def _create_loss_function(self) -> nn.Module:
         """Create loss function based on config."""

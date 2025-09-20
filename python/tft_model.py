@@ -242,11 +242,11 @@ class TemporalFusionTransformer(nn.Module):
         
         # Model dimensions
         self.input_size = config['input_size']
-        self.hidden_size = config.get('hidden_size', 256)
+        self.hidden_size = config.get('hidden_size', 1024)
         self.num_heads = config.get('num_heads', 8)
         self.num_quantiles = len(config.get('quantile_levels', [0.1, 0.5, 0.9]))
         self.prediction_horizon = config.get('prediction_horizon', [1])
-        self.sequence_length = config.get('sequence_length', 100)
+        self.sequence_length = config.get('sequence_length', 512)
         self.dropout_rate = config.get('dropout_rate', 0.1)
         
         # Static feature processing
