@@ -202,7 +202,7 @@ class FinancialDataset:
         
         # Forward fill missing values
         if self.config['handle_missing'] == 'forward_fill':
-            merged = merged.fillna(method='ffill')
+            merged = merged.ffill()
         
         print(f"Merged dataset shape: {merged.shape}")
         print(f"Date range: {merged.index.min()} to {merged.index.max()}")
@@ -438,26 +438,29 @@ class FinancialDataset:
     
     def _add_lagged_features(self, data: pd.DataFrame, assets: List[str]) -> pd.DataFrame:
         """Add lagged features for temporal dependencies."""
+        new_cols = {}
+        
         for asset in assets:
             close_col = f'{asset}_close'
             if close_col in data.columns:
                 # Lagged prices
                 for lag in range(1, 6):
-                    data[f'{asset}_close_lag_{lag}'] = data[close_col].shift(lag)
+                    new_cols[f'{asset}_close_lag_{lag}'] = data[close_col].shift(lag)
                 
                 # Rolling statistics
                 for window in [20, 50]:
-                    data[f'{asset}_ma_{window}'] = data[close_col].rolling(window).mean()
-                    data[f'{asset}_std_{window}'] = data[close_col].rolling(window).std()
+                    new_cols[f'{asset}_ma_{window}'] = data[close_col].rolling(window).mean()
+                    new_cols[f'{asset}_std_{window}'] = data[close_col].rolling(window).std()
                 
                 # Volume spikes
                 vol_col = f'{asset}_volume'
                 if vol_col in data.columns:
                     vol_mean = data[vol_col].rolling(20).mean()
                     vol_std = data[vol_col].rolling(20).std()
-                    data[f'{asset}_volume_spike'] = (data[vol_col] > vol_mean + 2 * vol_std).astype(float)
+                    new_cols[f'{asset}_volume_spike'] = (data[vol_col] > vol_mean + 2 * vol_std).astype(float)
         
-        return data
+        # Add all new columns at once to avoid fragmentation
+        return pd.concat([data, pd.DataFrame(new_cols, index=data.index)], axis=1)
     
     def _add_target_variables(self, data: pd.DataFrame, primary_asset: str = 'es') -> pd.DataFrame:
         """Add target variables for prediction."""
@@ -465,14 +468,16 @@ class FinancialDataset:
         if close_col not in data.columns:
             return data
         
+        new_cols = {}
         # Future returns at different horizons
         for horizon in self.config['prediction_horizon']:
             future_close = data[close_col].shift(-horizon)
-            data[f'target_return_{horizon}'] = np.log(future_close / data[close_col])
-            data[f'target_price_{horizon}'] = future_close
-            data[f'target_direction_{horizon}'] = (future_close > data[close_col]).astype(float)
+            new_cols[f'target_return_{horizon}'] = np.log(future_close / data[close_col])
+            new_cols[f'target_price_{horizon}'] = future_close
+            new_cols[f'target_direction_{horizon}'] = (future_close > data[close_col]).astype(float)
         
-        return data
+        # Add all new columns at once
+        return pd.concat([data, pd.DataFrame(new_cols, index=data.index)], axis=1)
     
     def _clean_features(self, data: pd.DataFrame) -> pd.DataFrame:
         """Clean features by handling inf, nan, and outliers."""
@@ -488,7 +493,7 @@ class FinancialDataset:
             data = data.drop(columns=cols_to_drop)
         
         # Forward fill remaining missing values
-        data = data.fillna(method='ffill')
+        data = data.ffill()
         
         # Drop rows with any remaining NaN (typically first few rows)
         data = data.dropna()

@@ -23,12 +23,20 @@ except ImportError:
     TENSORBOARD_AVAILABLE = False
     print("Warning: TensorBoard not available. Logging will be limited.")
 
+# Silent wandb import
+import sys
+WANDB_AVAILABLE = False
 try:
+    import io
+    old_stderr = sys.stderr
+    sys.stderr = io.StringIO()
     import wandb
     WANDB_AVAILABLE = True
 except ImportError:
-    WANDB_AVAILABLE = False
-    print("Warning: Weights & Biases not available.")
+    pass
+finally:
+    if 'old_stderr' in locals():
+        sys.stderr = old_stderr
 
 try:
     from .tft_model import TemporalFusionTransformer

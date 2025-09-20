@@ -41,7 +41,7 @@ def test_financial_dataset():
     assert len(processed_data.columns) > len(merged_data.columns), "No features were engineered"
     
     print(f"✓ Dataset test passed. Processed shape: {processed_data.shape}")
-    return dataset, processed_data
+    # Don't return values from test functions
 
 def test_tft_model():
     """Test TFT model creation and forward pass."""
@@ -77,7 +77,7 @@ def test_tft_model():
         assert pred.shape == expected_shape, f"Wrong shape for {horizon_key}: {pred.shape} vs {expected_shape}"
     
     print(f"✓ Model test passed. Predictions shape: {next(iter(predictions.values())).shape}")
-    return model
+    # Test completed successfully
 
 def test_loss_functions():
     """Test loss function implementations."""
@@ -86,8 +86,8 @@ def test_loss_functions():
     quantile_levels = [0.1, 0.5, 0.9]
     batch_size, num_quantiles = 16, len(quantile_levels)
     
-    # Sample data
-    predictions = torch.randn(batch_size, num_quantiles)
+    # Sample data with gradient enabled
+    predictions = torch.randn(batch_size, num_quantiles, requires_grad=True)
     targets = torch.randn(batch_size, 1)
     
     # Test different loss types
@@ -128,14 +128,17 @@ def test_trainer():
     assert tft_trainer.loss_fn is not None, "Loss function not created"
     
     print("✓ Trainer test passed")
-    return tft_trainer
+    # Trainer test completed
 
 def test_integration():
     """Test full integration pipeline."""
     print("Testing integration pipeline...")
     
     # 1. Create dataset
-    dataset, processed_data = test_financial_dataset()
+    dataset = data.FinancialDataset(data_dir="/tmp/test_data")
+    raw_data = dataset.load_data()
+    merged_data = dataset.merge_datasets()
+    processed_data = dataset.engineer_features(merged_data)
     
     # 2. Create sequences (small for testing)
     X, y = dataset.create_sequences(processed_data, sequence_length=20)

@@ -11,13 +11,23 @@ from typing import Dict, List, Tuple, Optional, Union
 import json
 from pathlib import Path
 
+# Silent CUDA backend import
+import sys
+import io
+CUDA_AVAILABLE = False
 try:
-    # Try to import CUDA backend (will be available after building)
+    old_stdout = sys.stdout
+    sys.stdout = io.StringIO()
     import tft_cuda
     CUDA_AVAILABLE = True
 except ImportError:
-    CUDA_AVAILABLE = False
-    print("Warning: TFT CUDA backend not available. Using PyTorch fallback.")
+    pass
+finally:
+    sys.stdout = old_stdout
+    
+# Print message only if not testing and CUDA is available
+if CUDA_AVAILABLE and not any('test' in arg.lower() for arg in sys.argv):
+    print("TFT-CUDA: CUDA backend loaded successfully")
 
 
 class GLU(nn.Module):

@@ -24,11 +24,10 @@ def test_data_module():
         assert len(sample_data) > 0, "Sample data creation failed"
         
         print(f"✓ Data module test passed. Sample data shape: {sample_data.shape}")
-        return True
         
     except Exception as e:
         print(f"❌ Data module test failed: {e}")
-        return False
+        raise
 
 def test_model_module():
     """Test TFT model module."""
@@ -69,13 +68,12 @@ def test_model_module():
             assert pred.shape == expected_shape, f"Wrong prediction shape: {pred.shape} vs {expected_shape}"
         
         print(f"✓ Model module test passed. Output shape: {next(iter(predictions.values())).shape}")
-        return True
         
     except Exception as e:
         print(f"❌ Model module test failed: {e}")
         import traceback
         traceback.print_exc()
-        return False
+        raise
 
 def test_loss_module():
     """Test loss module."""
@@ -100,13 +98,12 @@ def test_loss_module():
         assert loss_value.item() > 0, "Loss should be positive"
         
         print(f"✓ Loss module test passed. Loss value: {loss_value.item():.4f}")
-        return True
         
     except Exception as e:
         print(f"❌ Loss module test failed: {e}")
         import traceback
         traceback.print_exc()
-        return False
+        raise
 
 def test_end_to_end():
     """Test end-to-end functionality."""
@@ -183,13 +180,12 @@ def test_end_to_end():
         loss_value = loss_fn(pred_tensor, target_tensor)
         
         print(f"✓ End-to-end test passed. Loss: {loss_value.item():.4f}")
-        return True
         
     except Exception as e:
         print(f"❌ End-to-end test failed: {e}")
         import traceback
         traceback.print_exc()
-        return False
+        raise
 
 def run_tests():
     """Run all tests."""
@@ -207,8 +203,11 @@ def run_tests():
     total = len(tests)
     
     for test_func in tests:
-        if test_func():
+        try:
+            test_func()
             passed += 1
+        except:
+            pass
         print()
     
     print(f"Results: {passed}/{total} tests passed")
