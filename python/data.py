@@ -712,17 +712,48 @@ if TORCH_AVAILABLE:
     class TFTDataset(Dataset):
         """PyTorch Dataset for TFT model training."""
         
-        def __init__(self, X: np.ndarray, y: np.ndarray = None):
+        def __init__(self, X: np.ndarray, y: np.ndarray = None, 
+                     sequence_length: int = 50, prediction_horizon: int = 1):
             self.X = torch.tensor(X, dtype=torch.float32)
             self.y = torch.tensor(y, dtype=torch.float32) if y is not None else None
+            self.sequence_length = sequence_length
+            self.prediction_horizon = prediction_horizon
         
         def __len__(self):
             return len(self.X)
         
         def __getitem__(self, idx):
+            # Get the input sequence
+            x_sample = self.X[idx]  # Shape: (seq_len, num_features)
+            
+            # Split into historical and future features
+            # For financial data, we typically use most of sequence as historical
+            # and a small portion for future known features (if any)
+            historical_end = self.sequence_length - self.prediction_horizon
+            
+            historical_features = x_sample[:historical_end]  # Historical data
+            
+            # For future features, we'll use the last part of the sequence
+            # In practice, this might be empty or contain known future covariates
+            if self.prediction_horizon > 0 and historical_end < self.sequence_length:
+                future_features = x_sample[historical_end:]
+            else:
+                # If no future features, create empty tensor with appropriate shape
+                future_features = torch.zeros(self.prediction_horizon, x_sample.size(-1))
+            
+            # Static features - for now, use zeros (could be extracted from data later)
+            static_features = torch.zeros(10)  # Placeholder for static features
+            
+            # Create input dictionary that matches TFT model expectations
+            inputs = {
+                'historical_features': historical_features,
+                'future_features': future_features,
+                'static_features': static_features
+            }
+            
             if self.y is not None:
-                return self.X[idx], self.y[idx]
-            return self.X[idx]
+                return inputs, self.y[idx]
+            return inputs
 
 
 def main():

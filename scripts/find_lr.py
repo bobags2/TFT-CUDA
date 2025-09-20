@@ -49,8 +49,8 @@ def main():
         hidden_size=256,
         num_heads=8,
         sequence_length=X_train.shape[1],
-        quantile_levels=[0.1, 0.5, 0.9],
-        prediction_horizon=[1, 5, 10]
+        quantile_levels=[0.5],  # Use only median for LR finding
+        prediction_horizon=[1]  # Only 1-step ahead for simplicity
     )
     model = TemporalFusionTransformer(config)
     
@@ -59,8 +59,16 @@ def main():
     print(f"   Model created: {sum(p.numel() for p in model.parameters()):,} parameters")
     print(f"   Device: {device}")
     
-    # 3. Prepare data loader
-    train_dataset = TFTDataset(X_train, y_train)
+    # 3. Prepare data loader  
+    # For LR finder, use only first target (1-step ahead return) to simplify
+    y_train_simple = y_train[:, 0:1]  # Use only first target column
+    
+    train_dataset = TFTDataset(
+        X_train, 
+        y_train_simple, 
+        sequence_length=X_train.shape[1],  # Use actual sequence length from data
+        prediction_horizon=1  # Predict 1 step ahead
+    )
     train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
     
     # 4. Create loss function

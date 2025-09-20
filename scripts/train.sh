@@ -66,16 +66,16 @@ try:
         # Flatten for easier access
         flat_config = {
             'model': {
-                'hidden_size': model_config.get('hidden_size', 64),
-                'num_heads': model_config.get('num_heads', 4),
-                'sequence_length': model_config.get('sequence_length', 50),
+                'hidden_size': model_config.get('hidden_size', 1024),
+                'num_heads': model_config.get('num_heads', 8),
+                'sequence_length': model_config.get('sequence_length', 512),
                 'quantile_levels': model_config.get('quantile_levels', [0.1, 0.5, 0.9]),
                 'prediction_horizon': model_config.get('prediction_horizon', [1, 5, 10])
             },
             'training': {
                 'batch_size': training_config.get('batch_size', 16),
-                'epochs': training_config.get('epochs', 10),
-                'learning_rate': training_config.get('optimizer', {}).get('learning_rate', 1e-3)
+                'epochs': training_config.get('epochs', 100),
+                'learning_rate': training_config.get('optimizer', {}).get('learning_rate', 1.27e-07)
             }
         }
         config = flat_config
@@ -83,16 +83,16 @@ try:
         # Create basic config
         config = {
             'model': {
-                'hidden_size': 64,
-                'num_heads': 4,
-                'sequence_length': 50,
+                'hidden_size': 1024,
+                'num_heads': 8,
+                'sequence_length': 512,
                 'quantile_levels': [0.1, 0.5, 0.9],
                 'prediction_horizon': [1, 5, 10]
             },
             'training': {
                 'batch_size': 16,
-                'epochs': 10,
-                'learning_rate': 1e-3
+                'epochs': 100,
+                'learning_rate': 1.27e-07
             }
         }
         print('   ✓ Using default training configuration')
@@ -210,9 +210,9 @@ try:
         from tft_model import TemporalFusionTransformer, create_tft_config
         config = create_tft_config(
             input_size=X_train.shape[-1],
-            hidden_size=64,
-            num_heads=4,
-            sequence_length=X_train.shape[1]
+            hidden_size=1024,
+            num_heads=8,
+            sequence_length=min(512, X_train.shape[1])  # Use 512 or actual sequence length if smaller
         )
         model = TemporalFusionTransformer(config)
         print(f'   ✓ Model created with {sum(p.numel() for p in model.parameters()):,} parameters')
@@ -223,7 +223,7 @@ try:
     # Simple LSTM fallback
         import torch.nn as nn
         class SimpleLSTM(nn.Module):
-            def __init__(self, input_size, hidden_size=64, num_layers=1):
+            def __init__(self, input_size, hidden_size=1024, num_layers=1):
                 super().__init__()
                 self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
                 self.fc = nn.Linear(hidden_size, 1)
@@ -243,11 +243,12 @@ try:
         from torch.utils.data import DataLoader
         from data import TFTDataset
         
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
         training_config = create_training_config(
-            epochs=10,
+            epochs=100,
             batch_size=16,
-            learning_rate=1e-3,
-            device='cuda' if torch.cuda.is_available() else 'cpu',
+            learning_rate=1.27e-07,
+            device=device,
             checkpoint_dir='checkpoints',
             log_interval=50
         )
@@ -255,16 +256,26 @@ try:
         print('   ✓ Using TFT trainer')
         
         # Create DataLoaders
-        train_dataset = TFTDataset(X_train, y_train)
-        val_dataset = TFTDataset(X_val, y_val)
+        train_dataset = TFTDataset(
+            X_train, y_train,
+            sequence_length=min(512, X_train.shape[1]),
+            prediction_horizon=[1],  # Single horizon for simplicity
+            quantile_levels=[0.5]    # Single quantile for simplicity
+        )
+        val_dataset = TFTDataset(
+            X_val, y_val,
+            sequence_length=min(512, X_val.shape[1]),
+            prediction_horizon=[1],
+            quantile_levels=[0.5]
+        )
         
         train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True)
         val_loader = DataLoader(val_dataset, batch_size=16, shuffle=False)
         
-        print(f'   Starting training on {training_config["device"]}...')
+        print(f'   Starting training on {device}...')
         
         # Actually train the model!
-        history = trainer.train(train_loader, val_loader, epochs=10)
+        history = trainer.train(train_loader, val_loader, epochs=100)
         
         print('   ✓ Training completed successfully!')
         print(f'   Final train loss: {history["train_loss"][-1]:.6f}')
@@ -274,63 +285,84 @@ try:
         print('   Using simple training loop...')
         
         # Simple training setup
-        device = torch.device('cpu')
+        import torch.nn as nn
+        from data import TFTDataset
+        from torch.utils.data import DataLoader
+        
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         model = model.to(device)
-        optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+        optimizer = torch.optim.Adam(model.parameters(), lr=1.27e-07)
         criterion = nn.MSELoss()
         
-        # Convert data to tensors
-        X_train_tensor = torch.FloatTensor(X_train).to(device)
-        y_train_tensor = torch.FloatTensor(y_train).to(device)
-        X_val_tensor = torch.FloatTensor(X_val).to(device)
-        y_val_tensor = torch.FloatTensor(y_val).to(device)
+        # Create proper datasets
+        train_dataset = TFTDataset(X_train, y_train)
+        val_dataset = TFTDataset(X_val, y_val)
+        
+        train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True)
+        val_loader = DataLoader(val_dataset, batch_size=16, shuffle=False)
         
         # Training loop
-        epochs = 10
-        batch_size = 16
-        n_batches = len(X_train) // batch_size
+        epochs = 100
         
-        print(f'   Starting training: {epochs} epochs, {n_batches} batches per epoch')
+        print(f'   Starting training: {epochs} epochs on {device}...')
         
         for epoch in range(epochs):
             model.train()
             total_loss = 0
+            batch_count = 0
             
-            for i in range(0, len(X_train), batch_size):
-                end_idx = min(i + batch_size, len(X_train))
-                batch_X = X_train_tensor[i:end_idx]
-                batch_y = y_train_tensor[i:end_idx]
+            for batch_data, batch_targets in train_loader:
+                # Move to device
+                if isinstance(batch_data, dict):
+                    batch_inputs = {k: v.to(device) for k, v in batch_data.items()}
+                else:
+                    batch_inputs = batch_data.to(device)
+                batch_targets = batch_targets.to(device)
                 
                 optimizer.zero_grad()
                 
                 # Forward pass
-                if hasattr(model, 'forward'):
-                    outputs = model(batch_X)
-                    if isinstance(outputs, dict):
-                        pred = outputs['predictions']['horizon_1']
-                    else:
-                        pred = outputs
+                outputs = model(batch_inputs)
+                if isinstance(outputs, dict):
+                    pred = outputs['predictions']['horizon_1']
                 else:
-                    pred = model(batch_X)
+                    pred = outputs
                 
-                loss = criterion(pred.squeeze(), batch_y.squeeze())
+                # Use only first target for single horizon prediction
+                target = batch_targets[:, 0] if batch_targets.dim() > 1 else batch_targets
+                loss = criterion(pred.squeeze(), target.squeeze())
                 loss.backward()
                 optimizer.step()
                 
                 total_loss += loss.item()
+                batch_count += 1
             
             # Validation
             model.eval()
+            val_loss = 0
+            val_count = 0
             with torch.no_grad():
-                val_outputs = model(X_val_tensor)
-                if isinstance(val_outputs, dict):
-                    val_pred = val_outputs['predictions']['horizon_1']
-                else:
-                    val_pred = val_outputs
-                val_loss = criterion(val_pred.squeeze(), y_val_tensor.squeeze())
+                for batch_data, batch_targets in val_loader:
+                    if isinstance(batch_data, dict):
+                        batch_inputs = {k: v.to(device) for k, v in batch_data.items()}
+                    else:
+                        batch_inputs = batch_data.to(device)
+                    batch_targets = batch_targets.to(device)
+                    
+                    val_outputs = model(batch_inputs)
+                    if isinstance(val_outputs, dict):
+                        val_pred = val_outputs['predictions']['horizon_1']
+                    else:
+                        val_pred = val_outputs
+                    
+                    target = batch_targets[:, 0] if batch_targets.dim() > 1 else batch_targets
+                    batch_val_loss = criterion(val_pred.squeeze(), target.squeeze())
+                    val_loss += batch_val_loss.item()
+                    val_count += 1
             
-            avg_loss = total_loss / n_batches
-            print(f'   Epoch {epoch+1}/{epochs}: Train Loss={avg_loss:.6f}, Val Loss={val_loss:.6f}')
+            avg_loss = total_loss / batch_count
+            avg_val_loss = val_loss / val_count
+            print(f'   Epoch {epoch+1}/{epochs}: Train Loss={avg_loss:.6f}, Val Loss={avg_val_loss:.6f}')
         
         # Save model
         torch.save(model.state_dict(), 'data/model_checkpoint.pth')
@@ -339,11 +371,18 @@ try:
         # Test prediction
         model.eval()
         with torch.no_grad():
-            test_input = X_val_tensor[:1]  # Use first validation sample
-            test_pred = model(test_input)
-            if isinstance(test_pred, dict):
-                test_pred = test_pred['predictions']['horizon_1']
-            print(f'   ✓ Test prediction: {test_pred.item():.6f}')
+            # Get first validation batch
+            for test_batch_data, test_batch_targets in val_loader:
+                if isinstance(test_batch_data, dict):
+                    test_inputs = {k: v[:1].to(device) for k, v in test_batch_data.items()}
+                else:
+                    test_inputs = test_batch_data[:1].to(device)
+                
+                test_pred = model(test_inputs)
+                if isinstance(test_pred, dict):
+                    test_pred = test_pred['predictions']['horizon_1']
+                print(f'   ✓ Test prediction: {test_pred[0].item():.6f}')
+                break
         
         print('   ✓ Training completed successfully!')
         
