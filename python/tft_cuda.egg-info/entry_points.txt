@@ -1,4 +1,0 @@
-[console_scripts]
-tft-backtest = tft_cuda.scripts.backtest:main
-tft-predict = tft_cuda.scripts.predict:main
-tft-train = tft_cuda.scripts.train:main
