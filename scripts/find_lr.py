@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 # Import modules
 from data import FinancialDataset, TFTDataset
 from tft_model import TemporalFusionTransformer, create_tft_config
-from trainer import TFTTrainer, create_training_config
+from train import TFTTrainer
 from lr_scheduler import find_optimal_lr
 from loss import create_tft_loss
 
@@ -110,15 +110,25 @@ def main():
     # 8. Create training config with optimal LR
     print("\n⚙️  Creating optimized training config...")
     
-    training_config = create_training_config(
-        epochs=100,
-        batch_size=64,
-        learning_rate=best_lr,
-        scheduler='onecycle',
-        max_lr=best_lr * 10,  # OneCycle max LR
-        device=device,
-        checkpoint_dir='checkpoints'
-    )
+    # training_config = create_tft_config(
+    #     epochs=100,
+    #     batch_size=64,
+    #     learning_rate=best_lr,
+    #     scheduler='onecycle',
+    #     max_lr=best_lr * 10,  # OneCycle max LR
+    #     device=device,
+    #     checkpoint_dir='checkpoints'
+    # )
+    training_config = config.copy()
+    training_config.update({
+        'epochs': 100,
+        'batch_size': 64,
+        'learning_rate': best_lr,
+        'scheduler': 'onecycle',
+        'max_lr': best_lr * 10,  # OneCycle max LR
+        'device': device,
+        'checkpoint_dir': 'checkpoints'
+    })
     
     print("   Training config created with:")
     print(f"   - Base LR: {training_config['learning_rate']:.2e}")

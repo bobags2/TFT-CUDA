@@ -1,3 +1,6 @@
 {
-    "cmake.sourceDirectory": "N:/linux_projects/TFT/cpp"
+    "cmake.sourceDirectory": "N:/linux_projects/TFT/cpp",
+    "python.analysis.extraPaths": [
+        "./python"
+    ]
 }

@@ -89,7 +89,7 @@ class TFTEvaluator:
             print(f"❌ Failed to load model: {e}")
             return False
     
-    def load_data(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    def load_data(self) -> Tuple[np.ndarray, np.ndarray, Optional[np.ndarray], Optional[np.ndarray]]:
         """Load validation and test data."""
         print("\n📊 Loading evaluation data...")
         
@@ -116,8 +116,14 @@ class TFTEvaluator:
         
         return X_val, y_val, X_test, y_test
     
-    def evaluate_batch(self, X_batch: torch.Tensor, y_batch: torch.Tensor) -> Dict:
+    def evaluate_batch(self, X_batch: torch.Tensor, y_batch: torch.Tensor) -> Tuple[torch.Tensor, Dict]:
         """Evaluate a single batch of data."""
+        # Ensure model is loaded
+        if self.model is None:
+            if not self.load_model() or self.model is None:
+                raise RuntimeError("TFT model is not loaded. Call load_model() before evaluation.")
+        self.model.eval()
+
         batch_size, seq_len, num_features = X_batch.shape
         
         # Convert to TFT input format
@@ -245,6 +251,12 @@ class TFTEvaluator:
         """Evaluate entire dataset with batching."""
         print(f"\n🔍 Evaluating {dataset_name} set...")
         
+        # Ensure model is loaded
+        if self.model is None:
+            if not self.load_model() or self.model is None:
+                print("❌ Model not loaded; aborting dataset evaluation.")
+                return {}
+
         # Convert to tensors
         X_tensor = torch.FloatTensor(X).to(self.device)
         y_tensor = torch.FloatTensor(y).to(self.device)
@@ -412,10 +424,11 @@ class TFTEvaluator:
         ax5 = plt.subplot(2, 3, 5)
         if pred.shape[1] > 0:
             from scipy import stats
+            residuals = pred[:, 0] - target[:, 0]
             stats.probplot(residuals, dist="norm", plot=ax5)
             ax5.set_title('Q-Q Plot of Residuals')
             ax5.grid(True, alpha=0.3)
-        
+
         # 6. Rolling correlation
         ax6 = plt.subplot(2, 3, 6)
         if pred.shape[1] > 0 and len(pred) > 100:

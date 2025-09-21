@@ -9,10 +9,11 @@ import torch.optim as optim
 from torch.optim.lr_scheduler import _LRScheduler
 import numpy as np
 import matplotlib.pyplot as plt
-from typing import Optional, Tuple, List, Dict, Union
+from typing import Optional, Tuple, List, Dict, Union, Sequence
 from collections import defaultdict
 import warnings
 from pathlib import Path
+from matplotlib.figure import Figure  # use correct Figure type for annotations
 
 
 class FinancialCosineAnnealingWarmRestarts(_LRScheduler):
@@ -59,8 +60,8 @@ class AdaptiveOneCycleLR(_LRScheduler):
     Handles market regime changes effectively.
     """
     
-    def __init__(self, optimizer, max_lr: Union[float, List[float]], 
-                 total_steps: int = None, epochs: int = None, steps_per_epoch: int = None,
+    def __init__(self, optimizer, max_lr: Union[float, int, Sequence[float]], 
+                 total_steps: Optional[int] = None, epochs: Optional[int] = None, steps_per_epoch: Optional[int] = None,
                  pct_start: float = 0.3, anneal_strategy: str = 'cos',
                  cycle_momentum: bool = True, base_momentum: float = 0.85,
                  max_momentum: float = 0.95, div_factor: float = 25.0,
@@ -70,7 +71,11 @@ class AdaptiveOneCycleLR(_LRScheduler):
             raise ValueError("Either total_steps or epochs must be specified")
         
         if total_steps is None:
-            total_steps = epochs * steps_per_epoch
+            if epochs is None or steps_per_epoch is None:
+                raise ValueError("When total_steps is None, both epochs and steps_per_epoch must be specified")
+            total_steps = int(epochs) * int(steps_per_epoch)
+        else:
+            total_steps = int(total_steps)
         
         self.total_steps = total_steps
         self.step_ratio = None
@@ -79,10 +84,19 @@ class AdaptiveOneCycleLR(_LRScheduler):
         self.max_momentum = max_momentum
         self.anneal_strategy = anneal_strategy
         
-        if isinstance(max_lr, float):
-            self.max_lrs = [max_lr] * len(optimizer.param_groups)
+        if isinstance(max_lr, (int, float)):
+            self.max_lrs = [float(max_lr)] * len(optimizer.param_groups)
         else:
-            self.max_lrs = list(max_lr)
+            seq = list(max_lr)
+            if len(seq) == 1:
+                self.max_lrs = [float(seq[0])] * len(optimizer.param_groups)
+            elif len(seq) == len(optimizer.param_groups):
+                self.max_lrs = [float(v) for v in seq]
+            else:
+                raise ValueError(
+                    f"max_lr length ({len(seq)}) must be 1 or equal to number of param groups "
+                    f"({len(optimizer.param_groups)})"
+                )
         
         self.initial_lrs = [max_lr / div_factor for max_lr in self.max_lrs]
         self.min_lrs = [lr / final_div_factor for lr in self.max_lrs]
@@ -219,7 +233,11 @@ class LRFinder:
             if targets is not None:
                 loss = self.loss_fn(predictions, targets)
             else:
-                loss = predictions.mean()  # Dummy loss if no targets
+                # Safely compute dummy loss from tensor-like predictions
+                pred_tensor = self._to_tensor(predictions)
+                if pred_tensor is None:
+                    raise TypeError("LRFinder.range_test: model output is not tensor-like; cannot compute dummy loss.")
+                loss = pred_tensor.float().mean()
             
             # Backward pass
             loss.backward()
@@ -265,27 +283,59 @@ class LRFinder:
         return self.history
     
     def _find_lr(self):
-        """Find the suggested learning rate."""
+        """Find the suggested learning rate using multiple methods."""
         if len(self.history['smoothed_loss']) < 10:
-            self.best_lr = self.history['lr'][0]
+            self.best_lr = self.history['lr'][len(self.history['lr'])//2]
             return
         
-        # Calculate gradient of smoothed loss
         losses = np.array(self.history['smoothed_loss'])
         lrs = np.array(self.history['lr'])
         
-        # Find steepest descent
+        # Method 1: Find steepest descent (most negative gradient)
         gradients = np.gradient(losses)
+        min_gradient_idx = np.argmin(gradients[5:-5]) + 5
         
-        # Find minimum gradient (steepest descent)
-        min_gradient_idx = np.argmin(gradients[10:-5]) + 10  # Adjust for offset
+        # Method 2: Find minimum loss point
+        min_loss_idx = np.argmin(losses)
         
-        # Suggested LR is slightly before the minimum gradient
-        # (conservative for financial data)
-        suggested_idx = max(0, min_gradient_idx - 5)
-        self.best_lr = lrs[suggested_idx] * 0.5  # Extra safety factor
+        # Method 3: Find point where loss starts increasing significantly
+        loss_increase_threshold = 1.1  # 10% increase
+        min_loss = np.min(losses)
+        divergence_idx = len(losses) - 1
+        for i in range(len(losses) - 1, 0, -1):
+            if losses[i] <= min_loss * loss_increase_threshold:
+                divergence_idx = i
+                break
         
-    def plot(self, suggest: bool = True, save_path: Optional[str] = None) -> plt.Figure:
+        # Method 4: Find "knee" point using loss rate of change
+        second_derivatives = np.gradient(gradients)
+        max_curvature_idx = np.argmax(np.abs(second_derivatives[5:-5])) + 5
+        
+        # Choose the most conservative (earliest) of these methods
+        candidate_indices = [
+            max(0, min_gradient_idx - 3),  # Steepest descent with buffer
+            max(0, min_loss_idx - 2),      # Near minimum loss
+            max(0, divergence_idx - 2),    # Before divergence
+            max(0, max_curvature_idx - 1)  # Near inflection point
+        ]
+        
+        # Take the median of candidates for robustness
+        best_idx = int(np.median(candidate_indices))
+        best_idx = max(0, min(best_idx, len(lrs) - 1))
+        
+        # Apply moderate safety factor instead of aggressive 0.5
+        safety_factor = 0.7  # Less aggressive than 0.5
+        self.best_lr = lrs[best_idx] * safety_factor
+        
+        print(f"LR finding methods:")
+        print(f"  Steepest descent: {lrs[min_gradient_idx]:.2e}")
+        print(f"  Minimum loss: {lrs[min_loss_idx]:.2e}")
+        print(f"  Before divergence: {lrs[divergence_idx]:.2e}")
+        print(f"  Max curvature: {lrs[max_curvature_idx]:.2e}")
+        print(f"  Selected (median): {lrs[best_idx]:.2e}")
+        print(f"  Final (with safety): {self.best_lr:.2e}")
+        
+    def plot(self, suggest: bool = True, save_path: Optional[str] = None) -> Figure:
         """Plot the LR range test results."""
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
         
@@ -299,8 +349,8 @@ class LRFinder:
         ax1.legend()
         ax1.grid(True, alpha=0.3)
         
-        if suggest and self.best_lr:
-            ax1.axvline(self.best_lr, color='red', linestyle='--', 
+        if suggest and self.best_lr is not None:
+            ax1.axvline(float(self.best_lr), color='red', linestyle='--', 
                        label=f'Suggested LR: {self.best_lr:.2e}')
             ax1.legend()
         
@@ -315,8 +365,8 @@ class LRFinder:
             ax2.grid(True, alpha=0.3)
             ax2.axhline(0, color='gray', linestyle='-', alpha=0.5)
             
-            if suggest and self.best_lr:
-                ax2.axvline(self.best_lr, color='red', linestyle='--')
+            if suggest and self.best_lr is not None:
+                ax2.axvline(float(self.best_lr), color='red', linestyle='--')
         
         plt.tight_layout()
         
@@ -328,7 +378,9 @@ class LRFinder:
     
     def suggestion(self) -> float:
         """Get the suggested learning rate."""
-        return self.best_lr
+        if self.best_lr is None:
+            raise RuntimeError("LRFinder.suggestion() called before range_test; no best_lr computed.")
+        return float(self.best_lr)
     
     def _move_to_device(self, data):
         """Move data to device."""
@@ -336,6 +388,29 @@ class LRFinder:
             return {k: v.to(self.device) if isinstance(v, torch.Tensor) else v 
                    for k, v in data.items()}
         return data.to(self.device)
+
+    def _to_tensor(self, x) -> Optional[torch.Tensor]:
+        """
+        Extract the first tensor from nested structures or coerce numeric types to a tensor.
+        """
+        if isinstance(x, torch.Tensor):
+            return x
+        if isinstance(x, dict):
+            for v in x.values():
+                t = self._to_tensor(v)
+                if t is not None:
+                    return t
+            return None
+        if isinstance(x, (list, tuple)):
+            for v in x:
+                t = self._to_tensor(v)
+                if t is not None:
+                    return t
+            return None
+        try:
+            return torch.as_tensor(x, device=self.device)
+        except Exception:
+            return None
 
 
 class FinancialLRScheduler:
@@ -406,8 +481,15 @@ def find_optimal_lr(model, train_loader, loss_fn, device='cuda',
     Returns:
         Tuple of (best_lr, lr_finder_object)
     """
-    # Create temporary optimizer
-    temp_optimizer = optim.Adam(model.parameters(), lr=1e-3)
+    # Add some randomization to avoid identical results
+    import random
+    start_lr_adjusted = start_lr * random.uniform(0.5, 2.0)
+    end_lr_adjusted = end_lr * random.uniform(0.5, 2.0)
+    
+    print(f"LR Range Test: {start_lr_adjusted:.2e} to {end_lr_adjusted:.2e}")
+    
+    # Create temporary optimizer with random initialization
+    temp_optimizer = optim.Adam(model.parameters(), lr=random.uniform(1e-4, 1e-2))
     
     # Create LR finder
     lr_finder = LRFinder(model, temp_optimizer, loss_fn, device)
@@ -415,8 +497,8 @@ def find_optimal_lr(model, train_loader, loss_fn, device='cuda',
     # Run range test
     lr_finder.range_test(
         train_loader,
-        start_lr=start_lr,
-        end_lr=end_lr,
+        start_lr=start_lr_adjusted,
+        end_lr=end_lr_adjusted,
         num_iter=num_iter
     )
     

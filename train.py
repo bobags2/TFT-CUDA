@@ -45,13 +45,25 @@ class TradingMetrics:
                transaction_cost: float = 0.001):
         """Update metrics with batch results."""
         with torch.no_grad():
+            # Ensure predictions and targets have compatible shapes
+            if predictions.shape != targets.shape:
+                # Skip this batch if shapes don't match (edge case with partial batches)
+                return
+                
             preds = predictions.detach().cpu().numpy()
             targs = targets.detach().cpu().numpy()
             
-            positions = np.tanh(preds * 5)
-            returns = positions * targs
+            # Take only first 3 outputs for position calculation
+            if preds.shape[-1] >= 3:
+                positions = np.tanh(preds[:, :3].mean(axis=1))  # Average across horizons
+                target_returns = targs[:, :3].mean(axis=1)     # Average across horizons
+            else:
+                positions = np.tanh(preds.mean(axis=1))
+                target_returns = targs.mean(axis=1)
             
-            if len(self.positions) > 0:
+            returns = positions * target_returns
+            
+            if len(self.positions) > 0 and len(positions) == len(self.positions[-1]):
                 position_changes = np.abs(positions - self.positions[-1])
                 costs = position_changes * transaction_cost
                 returns = returns - costs
@@ -147,9 +159,10 @@ class TFTTrainer:
         self.gradient_history = deque(maxlen=100)
         self.trading_metrics = TradingMetrics()
         self.config = config or {
-            "max_grad_norm": 0.5,
-            "accumulation_steps": 2,
-            "dropout_increase": 0.1
+            "max_grad_norm": 1.0,  # More reasonable clipping
+            "accumulation_steps": 1,
+            "dropout_increase": 0.1,
+            "gradient_scale": 0.1  # Less aggressive scaling
         }
     
     def add_training_dropout(self):
@@ -174,7 +187,7 @@ class TFTTrainer:
         total_batches = 0
         accumulated_loss = 0
         
-        loss_components = {'mse': 0, 'direction': 0, 'profit': 0, 'sharpe': 0, 'direction_acc': 0}
+        loss_components = {'mse': 0.0, 'direction': 0.0, 'profit': 0.0, 'sharpe': 0.0, 'direction_acc': 0.0}
         self.trading_metrics.reset()
         
         optimizer.zero_grad()
@@ -198,23 +211,52 @@ class TFTTrainer:
                 
                 outputs = self.model(tft_inputs)
                 
-                if isinstance(outputs, dict) and 'predictions' in outputs:
-                    preds = []
-                    for horizon in [1, 5, 10]:
-                        if f'horizon_{horizon}' in outputs['predictions']:
-                            preds.append(outputs['predictions'][f'horizon_{horizon}'])
-                    pred = torch.cat(preds, dim=-1) if preds else outputs['predictions'][list(outputs['predictions'].keys())[0]]
+                # Robustly extract tensor predictions from model outputs
+                if isinstance(outputs, dict):
+                    if 'predictions' in outputs:
+                        pred_container = outputs['predictions']
+                        if isinstance(pred_container, dict):
+                            preds = []
+                            for horizon in [1, 5, 10]:
+                                key = f'horizon_{horizon}'
+                                if key in pred_container and isinstance(pred_container[key], torch.Tensor):
+                                    preds.append(pred_container[key])
+                            if preds:
+                                pred = torch.cat(preds, dim=-1)
+                            else:
+                                # Fallback: first tensor in predictions dict
+                                pred = next((v for v in pred_container.values() if isinstance(v, torch.Tensor)), None)
+                        elif isinstance(pred_container, torch.Tensor):
+                            pred = pred_container
+                        else:
+                            pred = None
+                    else:
+                        # Fallback: first tensor in outputs dict
+                        pred = next((v for v in outputs.values() if isinstance(v, torch.Tensor)), None)
                 else:
-                    pred = outputs
-                
+                    pred = outputs if isinstance(outputs, torch.Tensor) else None
+
+                if pred is None or not isinstance(pred, torch.Tensor):
+                    raise TypeError("Model output does not contain a tensor prediction")
+
+                # Ensure target is a tensor (handle potential dict batches)
+                if isinstance(y_batch, dict):
+                    y_batch = next((v for v in y_batch.values() if isinstance(v, torch.Tensor)), None)
+                    if y_batch is None:
+                        raise TypeError("Target batch does not contain a tensor")
+
                 if pred.shape != y_batch.shape:
-                    if pred.shape[1] == 1 and y_batch.shape[1] == 9:
-                        pred = pred.repeat(1, 9)
-                    elif pred.shape[1] == 9 and y_batch.shape[1] == 1:
-                        y_batch = y_batch.repeat(1, 9)
+                    if pred.dim() >= 2 and y_batch.dim() >= 2:
+                        if pred.shape[1] == 1 and y_batch.shape[1] == 9:
+                            pred = pred.repeat(1, 9)
+                        elif pred.shape[1] == 9 and y_batch.shape[1] == 1:
+                            y_batch = y_batch.repeat(1, 9)
                 
                 loss, components = criterion(pred, y_batch)
                 loss = loss / self.config['accumulation_steps']
+                
+                # Scale loss further to prevent gradient accumulation explosion
+                loss = loss * 0.1
                 
                 if torch.isnan(loss) or torch.isinf(loss):
                     print(f"⚠️  NaN/Inf loss at batch {batch_idx}, skipping")
@@ -222,7 +264,7 @@ class TFTTrainer:
                     continue
                 
                 loss.backward()
-                accumulated_loss += loss.item()
+                accumulated_loss += loss.item() * 10  # Compensate for scaling in display
                 
                 for key, value in components.items():
                     loss_components[key] += value
@@ -230,18 +272,33 @@ class TFTTrainer:
                 self.trading_metrics.update(pred, y_batch)
                 
                 if (batch_idx + 1) % self.config['accumulation_steps'] == 0:
+                    # Check gradient norm BEFORE any processing
+                    grad_norm_before = 0
+                    for p in self.model.parameters():
+                        if p.grad is not None:
+                            grad_norm_before += p.grad.data.norm(2).item() ** 2
+                    grad_norm_before = grad_norm_before ** 0.5
+                    
+                    # Scale down if too large BEFORE clipping
+                    if grad_norm_before > 15:  # Higher threshold to reduce spam
+                        scale_factor = 10 / grad_norm_before
+                        for param in self.model.parameters():
+                            if param.grad is not None:
+                                param.grad.data = param.grad.data * scale_factor
+                        # Only print occasionally to reduce spam
+                        if not hasattr(self, '_scale_counter'):
+                            self._scale_counter = 0
+                        self._scale_counter += 1
+                        if self._scale_counter % 20 == 0:
+                            print(f"  ⚠️  Gradient scaling applied {self._scale_counter} times")
+                    
+                    # Now clip normally
                     grad_norm = torch.nn.utils.clip_grad_norm_(
                         self.model.parameters(), 
                         max_norm=self.config['max_grad_norm']
                     )
                     
                     self.gradient_history.append(grad_norm.item() if hasattr(grad_norm, 'item') else grad_norm)
-                    
-                    if grad_norm > 10:
-                        print(f"  🛑 Gradient explosion: {grad_norm:.2f}, skipping")
-                        optimizer.zero_grad()
-                        accumulated_loss = 0
-                        continue
                     
                     optimizer.step()
                     optimizer.zero_grad()
@@ -270,7 +327,7 @@ class TFTTrainer:
         avg_grad = np.mean(list(self.gradient_history))
         
         for key in loss_components:
-            loss_components[key] /= max(total_batches, 1)
+            loss_components[key] /= float(max(total_batches, 1))
         
         trading_metrics = self.trading_metrics.get_metrics()
         
@@ -283,7 +340,7 @@ class TFTTrainer:
         val_batches = 0
         
         val_trading = TradingMetrics()
-        loss_components_sum = {'mse': 0, 'direction': 0, 'profit': 0, 'sharpe': 0, 'direction_acc': 0}
+        loss_components_sum = {'mse': 0.0, 'direction': 0.0, 'profit': 0.0, 'sharpe': 0.0, 'direction_acc': 0.0}
         
         with torch.no_grad():
             for X_batch, y_batch in dataloader:
@@ -300,20 +357,44 @@ class TFTTrainer:
                     
                     outputs = self.model(tft_inputs)
                     
-                    if isinstance(outputs, dict) and 'predictions' in outputs:
-                        preds = []
-                        for horizon in [1, 5, 10]:
-                            if f'horizon_{horizon}' in outputs['predictions']:
-                                preds.append(outputs['predictions'][f'horizon_{horizon}'])
-                        pred = torch.cat(preds, dim=-1) if preds else outputs['predictions'][list(outputs['predictions'].keys())[0]]
+                    # Robustly extract tensor predictions from model outputs (validation)
+                    if isinstance(outputs, dict):
+                        if 'predictions' in outputs:
+                            pred_container = outputs['predictions']
+                            if isinstance(pred_container, dict):
+                                preds = []
+                                for horizon in [1, 5, 10]:
+                                    key = f'horizon_{horizon}'
+                                    if key in pred_container and isinstance(pred_container[key], torch.Tensor):
+                                        preds.append(pred_container[key])
+                                if preds:
+                                    pred = torch.cat(preds, dim=-1)
+                                else:
+                                    pred = next((v for v in pred_container.values() if isinstance(v, torch.Tensor)), None)
+                            elif isinstance(pred_container, torch.Tensor):
+                                pred = pred_container
+                            else:
+                                pred = None
+                        else:
+                            pred = next((v for v in outputs.values() if isinstance(v, torch.Tensor)), None)
                     else:
-                        pred = outputs
+                        pred = outputs if isinstance(outputs, torch.Tensor) else None
+
+                    if pred is None or not isinstance(pred, torch.Tensor):
+                        raise TypeError("Model output does not contain a tensor prediction")
+
+                    # Ensure target is a tensor (handle potential dict batches)
+                    if isinstance(y_batch, dict):
+                        y_batch = next((v for v in y_batch.values() if isinstance(v, torch.Tensor)), None)
+                        if y_batch is None:
+                            raise TypeError("Target batch does not contain a tensor")
                     
                     if pred.shape != y_batch.shape:
-                        if pred.shape[1] == 1 and y_batch.shape[1] == 9:
-                            pred = pred.repeat(1, 9)
-                        elif pred.shape[1] == 9 and y_batch.shape[1] == 1:
-                            y_batch = y_batch.repeat(1, 9)
+                        if pred.dim() >= 2 and y_batch.dim() >= 2:
+                            if pred.shape[1] == 1 and y_batch.shape[1] == 9:
+                                pred = pred.repeat(1, 9)
+                            elif pred.shape[1] == 9 and y_batch.shape[1] == 1:
+                                y_batch = y_batch.repeat(1, 9)
                     
                     loss, components = criterion(pred, y_batch)
                     val_loss += loss.item()
@@ -331,7 +412,7 @@ class TFTTrainer:
         avg_val_loss = val_loss / max(val_batches, 1)
         
         for key in loss_components_sum:
-            loss_components_sum[key] /= max(val_batches, 1)
+            loss_components_sum[key] /= float(max(val_batches, 1))
         
         val_metrics = val_trading.get_metrics()
         
@@ -383,7 +464,8 @@ def main():
     config = {
         'input_size': X_train.shape[-1],
         'output_size': 3,
-        'hidden_size': 256,
+        'hidden_size': 512,
+        'num_layers': 2, 
         'num_heads': 4,
         'num_encoder_layers': 2,
         'num_decoder_layers': 2,
@@ -398,25 +480,37 @@ def main():
     
     # Initialize model
     model = TemporalFusionTransformer(config)
-    model.to(device)
     
-    # Conservative initialization
+    # ULTRA-conservative initialization to prevent explosions
     for name, param in model.named_parameters():
-        if 'weight' in name and len(param.shape) >= 2:
-            nn.init.xavier_uniform_(param, gain=0.5)
+        if 'weight' in name:
+            if 'lstm' in name.lower():
+                nn.init.normal_(param, mean=0, std=0.001)  # Tiny LSTM weights
+            elif len(param.shape) >= 2:
+                nn.init.normal_(param, mean=0, std=0.01)  # Very small weights
+            else:
+                nn.init.zeros_(param)
+        elif 'bias' in name:
+            nn.init.zeros_(param)
+            # LSTM forget gate bias trick
+            if 'lstm' in name.lower() and param.numel() >= 4:
+                n = param.size(0)
+                if n % 4 == 0:
+                    param.data[n//4:n//2].fill_(1.0)
     
+    model.to(device)
     print(f"Model parameters: {sum(p.numel() for p in model.parameters()):,}")
     
-    # Optimizer
+    # Optimizer with LR finder suggested rate
     optimizer = torch.optim.AdamW(
         model.parameters(),
-        lr=1e-5,
+        lr=6.39e-06,  # LR finder suggested rate
         betas=(0.9, 0.999),
-        eps=1e-8,
-        weight_decay=1e-3
+        eps=1e-6,
+        weight_decay=6.39e-08  # Proportional weight decay (LR/100)
     )
     
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=100, eta_min=1e-7)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=100, eta_min=6.39e-07)
     
     # Loss
     criterion = TradingAwareLoss(alpha=0.5, beta=0.3, gamma=0.2)
@@ -425,7 +519,7 @@ def main():
     train_dataset = TensorDataset(torch.FloatTensor(X_train), torch.FloatTensor(y_train))
     val_dataset = TensorDataset(torch.FloatTensor(X_val), torch.FloatTensor(y_val))
     
-    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, pin_memory=True)
+    train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True, pin_memory=True)
     val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False, pin_memory=True)
     
     # Trainer

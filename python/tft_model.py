@@ -7,24 +7,26 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Dict, List, Tuple, Optional, Union
+from typing import Dict, List, Tuple, Optional, Union, Any
 import json
 from pathlib import Path
 
 # Silent CUDA backend import
 import sys
 import io
+from contextlib import redirect_stdout
 CUDA_AVAILABLE = False
+tft_cuda: Optional[Any] = None  # ensure name is always defined
 try:
-    old_stdout = sys.stdout
-    sys.stdout = io.StringIO()
-    import tft_cuda
-    CUDA_AVAILABLE = True
+	with redirect_stdout(io.StringIO()):
+		import tft_cuda  # Optional CUDA backend
+	CUDA_AVAILABLE = True
 except ImportError:
-    pass
-finally:
-    sys.stdout = old_stdout
-    
+	pass
+except Exception:
+	# Safety: any unexpected error during optional backend load should not break CPU path
+	pass
+
 # Print message only if not testing and CUDA is available
 if CUDA_AVAILABLE and not any('test' in arg.lower() for arg in sys.argv):
     print("TFT-CUDA: CUDA backend loaded successfully")
@@ -181,7 +183,7 @@ class MultiHeadAttention(nn.Module):
         V = self.W_v(value).view(batch_size, seq_len, self.num_heads, self.d_k).transpose(1, 2)
         
         # Use CUDA kernel if available
-        if use_cuda and CUDA_AVAILABLE:
+        if use_cuda and CUDA_AVAILABLE and tft_cuda is not None:
             try:
                 # Convert to expected format: (B, T, H, D)
                 Q_cuda = Q.transpose(1, 2).contiguous().half()
@@ -197,9 +199,7 @@ class MultiHeadAttention(nn.Module):
                     10000.0, batch_size, seq_len, self.num_heads, self.d_k
                 )
                 
-                # Convert back to (B, H, T, D) then (B, T, H, D)
                 attention_output = output.transpose(1, 2).float()
-                
             except Exception as e:
                 print(f"CUDA attention failed, falling back to PyTorch: {e}")
                 attention_output, attn_weights = self._pytorch_attention(Q, K, V, mask)

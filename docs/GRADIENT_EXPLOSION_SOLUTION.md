@@ -10,7 +10,7 @@ Targets normalized: mean=-0.1781, std=1.0224         ← Correct
 ```
 
 **Expected after normalization**: `mean ≈ 0, std ≈ 1`  
-**Actual results**: `mean = 200, std = 268,938` 
+**Actual results**: `mean = 200, std = 268,938`
 
 This explains why even with ultra-conservative initialization (gain=0.01) and aggressive gradient clipping (0.1), gradients still exploded to 11,781,032 on the first batch.
 
@@ -161,6 +161,7 @@ Batch 50: Loss=0.692134, Grad_Norm=0.028901, LR=1.00e-06
 ```
 
 **Key Success Indicators**:
+
 - Gradient norms < 0.1 (vs previous 11M+)
 - Smooth loss convergence
 - No batch skipping due to explosions
@@ -177,13 +178,15 @@ Once stable training is achieved, you can gradually optimize:
 
 ## Monitoring and Validation 📊
 
-### Critical Metrics to Watch:
+### Critical Metrics to Watch
+
 - **Gradient Norm**: Should be < 1.0, ideally 0.01-0.1
 - **Loss Convergence**: Smooth downward trend, no sudden spikes
 - **Feature Statistics**: Post-normalization mean≈0, std≈1
 - **Batch Skip Rate**: Should be 0% with proper normalization
 
-### Warning Signs:
+### Warning Signs
+
 - Gradient norms > 1.0
 - Loss spikes or NaN values
 - High batch skip rates
@@ -198,11 +201,13 @@ Once stable training is achieved, you can gradually optimize:
 ## Technical Documentation 📖
 
 The solution addresses the fundamental issue that financial time series data has:
+
 - **Extreme scale differences**: Prices (4000+), returns (0.001), volume (1M+)
 - **Heavy-tailed distributions**: Require robust standardization
 - **Temporal dependencies**: Need careful normalization across time sequences
 
 The verified normalization ensures all features have mean≈0 and std≈1, which is critical for:
+
 - **Stable gradients**: Prevents amplification through network layers
 - **Effective optimization**: Enables standard learning rates and schedules
 - **Numerical precision**: Avoids overflow/underflow in mixed precision training
