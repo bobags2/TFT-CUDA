@@ -1,0 +1,45 @@
+{
+  "timestamp": "2025-09-21T12:47:28.720358",
+  "model_path": "checkpoints/tft_best.pth",
+  "config": {
+    "input_size": 134,
+    "output_size": 3,
+    "hidden_size": 256,
+    "num_heads": 4,
+    "num_encoder_layers": 2,
+    "num_decoder_layers": 2,
+    "dropout_rate": 0.3,
+    "sequence_length": 128,
+    "quantile_levels": [
+      0.5
+    ],
+    "prediction_horizon": [
+      1,
+      5,
+      10
+    ],
+    "num_historical_features": 134,
+    "num_future_features": 134,
+    "static_input_size": 10
+  },
+  "metrics": {
+    "validation_mse": 0.7327325940132141,
+    "validation_mae": 0.7307145595550537,
+    "validation_rmse": 0.8559980392456055,
+    "validation_nrmse": 1.0487823486328125,
+    "validation_r2": -0.0999443531036377,
+    "validation_direction_accuracy": 0.4928970314490056,
+    "validation_sharpe_pred": -152.09028565466934,
+    "validation_sharpe_target": 1.1289975404033104,
+    "validation_max_drawdown_pred": -1.0,
+    "validation_max_drawdown_target": -1.006630301475525
+  },
+  "quality_assessment": {
+    "overall_quality": "INADEQUATE \u2b50",
+    "r2_score": -0.0999443531036377,
+    "rmse": 0.8559980392456055,
+    "direction_accuracy": 0.4928970314490056,
+    "sharpe_ratio": -152.09028565466934,
+    "max_drawdown": -1.0
+  }
+}

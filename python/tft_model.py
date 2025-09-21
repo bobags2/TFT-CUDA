@@ -242,10 +242,11 @@ class TemporalFusionTransformer(nn.Module):
         
         # Model dimensions
         self.input_size = config['input_size']
-        self.hidden_size = config.get('hidden_size', 1024)
-        self.num_heads = config.get('num_heads', 8)
+        self.output_size = config.get('output_size', 3)  # 3 outputs per horizon: return, price, direction
+        self.hidden_size = config.get('hidden_size', 512)
+        self.num_heads = config.get('num_heads', 4)
         self.num_quantiles = len(config.get('quantile_levels', [0.1, 0.5, 0.9]))
-        self.prediction_horizon = config.get('prediction_horizon', [1])
+        self.prediction_horizon = config.get('prediction_horizon', [1, 5, 10])
         self.sequence_length = config.get('sequence_length', 512)
         self.dropout_rate = config.get('dropout_rate', 0.1)
         
@@ -277,8 +278,8 @@ class TemporalFusionTransformer(nn.Module):
             self.hidden_size, 
             self.hidden_size, 
             batch_first=True,
-            dropout=self.dropout_rate if config.get('num_lstm_layers', 1) > 1 else 0,
-            num_layers=config.get('num_lstm_layers', 1)
+            dropout=self.dropout_rate if config.get('num_lstm_layers', 2) > 1 else 0,
+            num_layers=config.get('num_lstm_layers', 2)
         )
         
         # Temporal attention
@@ -296,9 +297,9 @@ class TemporalFusionTransformer(nn.Module):
             self.dropout_rate
         )
         
-        # Quantile heads for each prediction horizon
+        # Output heads for each prediction horizon (return, price, direction)
         self.quantile_heads = nn.ModuleList([
-            nn.Linear(self.hidden_size, self.num_quantiles) 
+            nn.Linear(self.hidden_size, self.output_size) 
             for _ in self.prediction_horizon
         ])
         
@@ -533,13 +534,13 @@ def create_tft_config(input_size: int, **kwargs) -> Dict:
     """Create default TFT configuration."""
     config = {
         'input_size': input_size,
-        'hidden_size': kwargs.get('hidden_size', 256),
-        'num_heads': kwargs.get('num_heads', 8),
+        'hidden_size': kwargs.get('hidden_size', 512),
+        'num_heads': kwargs.get('num_heads', 4),
         'quantile_levels': kwargs.get('quantile_levels', [0.1, 0.5, 0.9]),
         'prediction_horizon': kwargs.get('prediction_horizon', [1, 5, 10]),
-        'sequence_length': kwargs.get('sequence_length', 100),
+        'sequence_length': kwargs.get('sequence_length', 512),
         'dropout_rate': kwargs.get('dropout_rate', 0.1),
-        'num_lstm_layers': kwargs.get('num_lstm_layers', 1),
+        'num_lstm_layers': kwargs.get('num_lstm_layers', 2),
         'static_input_size': kwargs.get('static_input_size', 10),
         'num_historical_features': kwargs.get('num_historical_features', input_size),
         'num_future_features': kwargs.get('num_future_features', 10)

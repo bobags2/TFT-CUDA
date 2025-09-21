@@ -32,6 +32,7 @@ This document provides a comprehensive overview of the TFT-CUDA build process, t
 ### Build Dependencies
 
 #### Required
+
 - Python 3.8+
 - PyTorch 1.13+
 - NumPy
@@ -40,11 +41,13 @@ This document provides a comprehensive overview of the TFT-CUDA build process, t
 - CMake (for CUDA builds)
 
 #### Optional (for CUDA acceleration)
+
 - CUDA Toolkit 11.0+
 - Compatible GPU with compute capability 7.5+
 - nvidia-driver
 
 #### Development
+
 - pytest (for testing)
 - black (code formatting)
 - flake8 (linting)
@@ -52,6 +55,7 @@ This document provides a comprehensive overview of the TFT-CUDA build process, t
 ## Build Execution
 
 ### Automated Build
+
 ```bash
 # Full build and installation
 bash scripts/build.sh
@@ -69,11 +73,13 @@ bash scripts/debug.sh
 ### Manual Build Steps
 
 1. **Environment Setup**:
+
    ```bash
    pip install torch numpy pandas pybind11 cmake
    ```
 
 2. **CUDA Build** (if available):
+
    ```bash
    cd cpp
    mkdir -p build && cd build
@@ -83,6 +89,7 @@ bash scripts/debug.sh
    ```
 
 3. **Python Package**:
+
    ```bash
    pip install -e .
    ```
@@ -120,12 +127,15 @@ bash scripts/debug.sh
 ## Common Build Issues
 
 ### Issue 1: CUDA Not Available
-**Symptoms**: 
+
+**Symptoms**:
+
 - `nvcc command not found`
 - CUDA tests skipped
 - CPU-only build
 
 **Solutions**:
+
 1. Install CUDA toolkit
 2. Verify PATH includes CUDA binaries
 3. Use CPU-only mode (still functional)
@@ -133,45 +143,57 @@ bash scripts/debug.sh
 **Workaround**: CPU-only builds are fully supported
 
 ### Issue 2: PyTorch Import Errors
+
 **Symptoms**:
+
 - `ModuleNotFoundError: No module named 'torch'`
 - Version compatibility warnings
 
 **Solutions**:
+
 1. Install PyTorch: `pip install torch`
 2. Verify Python version compatibility
 3. Check virtual environment activation
 
 ### Issue 3: CMake Configuration Fails
+
 **Symptoms**:
+
 - CMake configuration errors
 - Missing dependencies
 - Compiler not found
 
 **Solutions**:
+
 1. Install CMake: `sudo apt-get install cmake`
 2. Install build tools: `sudo apt-get install build-essential`
 3. Verify C++ compiler availability
 
 ### Issue 4: Memory Issues During Training
+
 **Symptoms**:
+
 - Out of memory errors
 - Training crashes
 - Slow performance
 
 **Solutions**:
+
 1. Reduce batch size in config
 2. Use gradient accumulation
 3. Enable mixed precision training
 4. Close other GPU applications
 
 ### Issue 5: Data Loading Problems
+
 **Symptoms**:
+
 - File not found errors
 - Data format issues
 - Preprocessing failures
 
 **Solutions**:
+
 1. Verify data files in `data/` directory
 2. Check file format matches expected schema
 3. Use synthetic data fallback for testing
@@ -181,11 +203,13 @@ bash scripts/debug.sh
 ### Typical Performance (Reference Hardware)
 
 #### Training Performance
+
 - **CPU**: ~50-100 samples/second
 - **GPU (RTX 3080)**: ~500-1000 samples/second
 - **Memory Usage**: 2-8 GB depending on configuration
 
 #### Model Sizes
+
 - **Small Model**: ~1M parameters, 50MB memory
 - **Medium Model**: ~5M parameters, 200MB memory  
 - **Large Model**: ~20M parameters, 800MB memory
@@ -193,6 +217,7 @@ bash scripts/debug.sh
 ### Optimization Settings
 
 #### For Speed
+
 ```json
 {
   "training": {
@@ -208,6 +233,7 @@ bash scripts/debug.sh
 ```
 
 #### For Memory Efficiency
+
 ```json
 {
   "training": {
@@ -225,6 +251,7 @@ bash scripts/debug.sh
 ## Verification Checklist
 
 ### Post-Build Verification
+
 - [ ] `tft_cuda` module imports successfully
 - [ ] Basic tensor operations work
 - [ ] Model forward pass completes
@@ -232,6 +259,7 @@ bash scripts/debug.sh
 - [ ] Tests pass without errors
 
 ### Production Readiness
+
 - [ ] All tests pass
 - [ ] Performance meets requirements
 - [ ] Memory usage within limits
@@ -241,17 +269,20 @@ bash scripts/debug.sh
 ## Deployment Notes
 
 ### Environment Requirements
+
 - Python 3.8+ environment
 - GPU with CUDA support (optional but recommended)
 - Sufficient memory (8GB+ recommended)
 - Fast storage for data loading
 
 ### Configuration Management
+
 - Use `config/default_config.json` for model settings
 - Environment variables for system-specific settings
 - Separate configs for development/production
 
 ### Monitoring
+
 - Watch GPU memory usage
 - Monitor training loss convergence
 - Track prediction accuracy metrics
@@ -269,12 +300,14 @@ bash scripts/debug.sh
 ## Next Steps
 
 ### For Users
+
 1. Run `bash scripts/build.sh` to set up environment
 2. Execute `bash scripts/train.sh` to train initial model
 3. Use `bash scripts/test.sh` to verify installation
 4. Customize configuration in `config/default_config.json`
 
 ### For Developers
+
 1. Review code in `python/` and `cpp/` directories
 2. Add tests for new functionality
 3. Update documentation for changes

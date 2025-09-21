@@ -46,11 +46,16 @@ def main():
     print("\n🏗️  Creating model...")
     config = create_tft_config(
         input_size=X_train.shape[-1],
-        hidden_size=1024,
-        num_heads=8,
+        hidden_size=512,
+        num_heads=4,
         sequence_length=X_train.shape[1],
-        quantile_levels=[0.5],  # Use only median for LR finding
-        prediction_horizon=[1]  # Only 1-step ahead for simplicity
+        quantile_levels=[0.1, 0.5, 0.9],# Use only median for LR finding
+        prediction_horizon=[1, 5, 10],
+        dropout_rate=0.1,
+        num_lstm_layers=2,
+        static_input_size=10,
+        num_historical_features=X_train.shape[-1],
+        num_future_features=10
     )
     model = TemporalFusionTransformer(config)
     

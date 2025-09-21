@@ -113,3 +113,14 @@ data/X_val.npy
 data/X_train.npy
 checkpoints/checkpoint_epoch_10.pth
 data/X_train_temporal.npy
+data/y_test_temporal.npy
+data/X_test_temporal.npy
+data/X_val_temporal.npy
+data/y_test_temporal.npy
+data/y_train_temporal.npy
+data/y_train.npy
+data/X_val.npy
+data/y_train.npy
+.gitignore
+data/X_val.npy
+checkpoints/tft_best.pth
