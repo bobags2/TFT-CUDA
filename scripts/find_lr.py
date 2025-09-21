@@ -46,7 +46,7 @@ def main():
     print("\n🏗️  Creating model...")
     config = create_tft_config(
         input_size=X_train.shape[-1],
-        hidden_size=256,
+        hidden_size=1024,
         num_heads=8,
         sequence_length=X_train.shape[1],
         quantile_levels=[0.5],  # Use only median for LR finding
@@ -125,7 +125,7 @@ def main():
     
     # Test OneCycle
     trainer = TFTTrainer(model, training_config)
-    print(f"   OneCycle LR schedule ready")
+    print("   OneCycle LR schedule ready")
     
     # Test Cosine Annealing with Warm Restarts
     config_cosine = training_config.copy()

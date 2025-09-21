@@ -111,3 +111,5 @@ data/y_val.npy
 data/y_train.npy
 data/X_val.npy
 data/X_train.npy
+checkpoints/checkpoint_epoch_10.pth
+data/X_train_temporal.npy
