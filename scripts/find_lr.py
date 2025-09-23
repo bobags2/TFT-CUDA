@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 
 # Import modules
 from data import FinancialDataset, TFTDataset
-from tft_model import TemporalFusionTransformer, create_tft_config
+from tft_model import TemporalFusionTransformer
 from train import TFTTrainer
 from lr_scheduler import find_optimal_lr
 from loss import create_tft_loss
@@ -44,19 +44,19 @@ def main():
     
     # 2. Create model
     print("\n🏗️  Creating model...")
-    config = create_tft_config(
-        input_size=X_train.shape[-1],
-        hidden_size=512,
-        num_heads=4,
-        sequence_length=X_train.shape[1],
-        quantile_levels=[0.1, 0.5, 0.9],# Use only median for LR finding
-        prediction_horizon=[1, 5, 10],
-        dropout_rate=0.1,
-        num_lstm_layers=2,
-        static_input_size=10,
-        num_historical_features=X_train.shape[-1],
-        num_future_features=10
-    )
+    config = {
+        'input_size': X_train.shape[-1],
+        'hidden_size': 512,
+        'num_heads': 4,
+        'sequence_length': X_train.shape[1],
+        'quantile_levels': [0.1, 0.5, 0.9],# Use only median for LR finding
+        'prediction_horizon': [1, 5, 10],
+        'dropout_rate': 0.1,
+        'num_lstm_layers': 2,
+        'static_input_size': 10,
+        'num_historical_features': X_train.shape[-1],
+        'num_future_features': 10
+    }
     model = TemporalFusionTransformer(config)
     
     device = 'cuda' if torch.cuda.is_available() else 'cpu'

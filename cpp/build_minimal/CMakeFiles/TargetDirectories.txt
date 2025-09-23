@@ -1,0 +1,3 @@
+/mnt/n/linux_projects/TFT/cpp/build_minimal/CMakeFiles/test_minimal.dir
+/mnt/n/linux_projects/TFT/cpp/build_minimal/CMakeFiles/edit_cache.dir
+/mnt/n/linux_projects/TFT/cpp/build_minimal/CMakeFiles/rebuild_cache.dir

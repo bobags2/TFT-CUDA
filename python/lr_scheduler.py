@@ -440,7 +440,7 @@ class FinancialLRScheduler:
         elif strategy == 'cyclic':
             self.scheduler = optim.lr_scheduler.CyclicLR(
                 optimizer,
-                base_lr=kwargs.get('base_lr', 1e-5),
+                base_lr=kwargs.get('base_lr', 9.38e-06),
                 max_lr=kwargs.get('max_lr', 1e-2),
                 step_size_up=kwargs.get('step_size_up', 2000),
                 mode=kwargs.get('mode', 'triangular2')

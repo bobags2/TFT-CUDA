@@ -22,14 +22,14 @@ __global__ void quantile_heads_backward_mp(
     cg::thread_block block = cg::this_thread_block();
     cg::thread_block_tile<32> warp = cg::tiled_partition<32>(block);
 
-    int b = blockIdx.x;  // Batch
+    int batch_idx = blockIdx.x;  // Batch
     int t = blockIdx.y;  // Time
     int q = threadIdx.x; // Quantile
-    if (b >= B || t >= T || q >= Q) return;
+    if (batch_idx >= B || t >= T || q >= Q) return;
 
-    int pred_idx = b * T * Q + t * Q + q;
-    int target_idx = b * T + t;
-    int input_base = b * T * D + t * D;
+    int pred_idx = batch_idx * T * Q + t * Q + q;
+    int target_idx = batch_idx * T + t;
+    int input_base = batch_idx * T * D + t * D;
 
     // Load values (FP16 → FP32)
     float pred = __half2float(preds[pred_idx]);

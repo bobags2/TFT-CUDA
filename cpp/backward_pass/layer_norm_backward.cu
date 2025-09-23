@@ -1,4 +1,9 @@
-_global__ void layer_norm_backward_mp(
+#include <cuda_runtime.h>
+#include <cuda_fp16.h>
+#include <cooperative_groups.h>
+#include <cmath>
+
+__global__ void layer_norm_backward_mp(
     const __half* dL_doutput,  // (B, D) - gradient from next layer
     const __half* input,       // (B, D) - pre-LN input
     const __half* gamma,       // (D)
@@ -34,9 +39,11 @@ _global__ void layer_norm_backward_mp(
     float dL_dmean = -dL_dnormed * inv_std_b;
     float dL_dvar = -dL_dnormed * normed * 0.5f * (inv_std_b * inv_std_b * inv_std_b);
 
-    // Sum across D for dL/dmean and dL/dvar
-    dL_dmean = warp.reduce(dL_dmean, [](float a, float b) { return a + b; });
-    dL_dvar = warp.reduce(dL_dvar, [](float a, float b) { return a + b; });
+    // Manual warp reduction for dL/dmean and dL/dvar
+    for (int offset = 16; offset > 0; offset /= 2) {
+        dL_dmean += __shfl_down_sync(0xffffffff, dL_dmean, offset);
+        dL_dvar += __shfl_down_sync(0xffffffff, dL_dvar, offset);
+    }
 
     // Final gradient: dL/dx = dL/dnormed * inv_std + dL/dvar * 2 * (x - mean)/D + dL/dmean / D
     float dx = dL_dnormed * inv_std_b;

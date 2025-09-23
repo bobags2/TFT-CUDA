@@ -1,3 +1,6 @@
+#include <cuda_runtime.h>
+#include <cuda_fp16.h>
+
 __global__ void linear_forward_mp(
     const __half* input,     // (M, K)
     const __half* weight,    // (K, N)

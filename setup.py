@@ -1,17 +1,16 @@
 """
-Setup script for TFT-CUDA: relies on pyproject.toml for metadata.
-This file only wires up the optional CUDA extension build via pybind11.
+Setup script for TFT-CUDA: uses PyTorch's native extension system.
+Eliminates PyBind11 dependency for better compatibility with PyTorch dev versions.
 """
 
 from setuptools import setup
-from pybind11.setup_helpers import Pybind11Extension, build_ext
-import pybind11
+from torch.utils.cpp_extension import BuildExtension, CUDAExtension
+import torch
 from pathlib import Path
 
 
 def cuda_available() -> bool:
     try:
-        import torch  # noqa: F401
         return torch.cuda.is_available()
     except Exception:
         return False
@@ -19,8 +18,6 @@ def cuda_available() -> bool:
 
 def get_cuda_arch() -> str:
     try:
-        import torch
-
         if torch.cuda.is_available():
             major, minor = torch.cuda.get_device_capability(0)
             return f"{major}{minor}"
@@ -44,6 +41,7 @@ if cuda_available():
 
     cuda_sources = [
         "cpp/bindings/tft_bindings.cpp",
+        "cpp/tft_cuda_impl.cu",  # Wrapper implementations compiled with NVCC
         "cpp/forward_pass/lstm.cu",
         "cpp/forward_pass/mha.cu",
         "cpp/forward_pass/linear_fwd.cu",
@@ -62,28 +60,22 @@ if cuda_available():
     existing_sources = [src for src in cuda_sources if Path(src).exists()]
     if existing_sources:
         ext_modules.append(
-            Pybind11Extension(
-                "tft_cuda",
+            CUDAExtension(
+                name="tft_cuda_ext",
                 sources=existing_sources,
-                include_dirs=cuda_include_dirs + [pybind11.get_include()],
-                language="c++",
-                cxx_std=17,
+                include_dirs=cuda_include_dirs,
                 extra_compile_args={
                     "cxx": ["-O3", "-Wall", "-std=c++17", "-fPIC"],
                     "nvcc": [
                         "-O3",
-                        "-std=c++17",
-                        f"-gencode=arch=compute_{cuda_arch},code=sm_{cuda_arch}",
-                        "-use_fast_math",
-                        "-Xptxas",
-                        "-v",
+                        "--use_fast_math",
                         "--expt-relaxed-constexpr",
+                        f"-arch=sm_{cuda_arch}",
                         "-Xcompiler",
                         "-fPIC",
                     ],
                 },
-                libraries=["cuda", "cudart", "cublas", "curand"],
-                library_dirs=["/usr/local/cuda/lib64"],
+                # Rely on PyTorch/conda for CUDA/Torch linkage; avoid explicit -lcuda to prevent link errors
             )
         )
     else:
@@ -93,6 +85,7 @@ else:
 
 
 setup(
+    name="tft_cuda",
     ext_modules=ext_modules,
-    cmdclass={"build_ext": build_ext},
+    cmdclass={"build_ext": BuildExtension},
 )

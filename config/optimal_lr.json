@@ -1,0 +1,19 @@
+{
+  "optimal_lr": 6.6e-06,
+  "conservative_lr": 6.6e-07,
+  "aggressive_lr": 1.32e-05,
+  "scheduler_recommendations": {
+    "onecycle": {
+      "max_lr": 6.6e-05,
+      "base_lr": 2.64e-07
+    },
+    "cosine_restarts": {
+      "base_lr": 6.6e-06,
+      "eta_min": 6.6e-08
+    },
+    "plateau": {
+      "initial_lr": 6.6e-06,
+      "min_lr": 6.6e-09
+    }
+  }
+}

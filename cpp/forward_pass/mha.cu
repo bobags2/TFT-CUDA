@@ -1,3 +1,11 @@
+#include <cuda_runtime.h>
+#include <cuda_fp16.h>
+#include <cooperative_groups.h>
+#include <cmath>
+
+#define MAX_T 512
+#define WARP_SIZE 32
+
 __global__ void multi_head_attention_mp(
     const __half* Q,          // (B, T, H, D)
     const __half* K,          // (B, T, H, D)

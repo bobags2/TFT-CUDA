@@ -1,4 +1,9 @@
-__global__ void static_encoder_mp(
+#include <cuda_runtime.h>
+#include <cuda_fp16.h>
+#include <cooperative_groups.h>
+#include <cmath>
+
+__global__ void static_encoder_forward(
     const __half* input,      // (B, S)
     const __half* W1,         // (S, 64)
     const __half* W2,         // (64, 32)
@@ -38,10 +43,20 @@ __global__ void static_encoder_mp(
     // === LayerNorm (64) - WARP-LEVEL REDUCTION ===
     float mean = 0.0f, var = 0.0f;
     for (int i = 0; i < 64; i++) mean += hidden[i];
-    mean = warp.reduce(mean, [](float a, float b) { return a + b; }) / 64.0f;
+    
+    // Manual warp reduction for mean
+    for (int offset = 16; offset > 0; offset /= 2) {
+        mean += __shfl_down_sync(0xffffffff, mean, offset);
+    }
+    mean /= 64.0f;
 
     for (int i = 0; i < 64; i++) var += (hidden[i] - mean) * (hidden[i] - mean);
-    var = warp.reduce(var, [](float a, float b) { return a + b; }) / 64.0f;
+    
+    // Manual warp reduction for variance
+    for (int offset = 16; offset > 0; offset /= 2) {
+        var += __shfl_down_sync(0xffffffff, var, offset);
+    }
+    var /= 64.0f;
     float inv_std = rsqrtf(var + 1e-8f);
 
     for (int i = tid; i < 64; i += blockDim.x)
@@ -61,10 +76,20 @@ __global__ void static_encoder_mp(
     // === LayerNorm (32) - WARP-LEVEL REDUCTION ===
     mean = 0.0f; var = 0.0f;
     for (int i = 0; i < 32; i++) mean += out[i];
-    mean = warp.reduce(mean, [](float a, float b) { return a + b; }) / 32.0f;
+    
+    // Manual warp reduction for mean
+    for (int offset = 16; offset > 0; offset /= 2) {
+        mean += __shfl_down_sync(0xffffffff, mean, offset);
+    }
+    mean /= 32.0f;
 
     for (int i = 0; i < 32; i++) var += (out[i] - mean) * (out[i] - mean);
-    var = warp.reduce(var, [](float a, float b) { return a + b; }) / 32.0f;
+    
+    // Manual warp reduction for variance
+    for (int offset = 16; offset > 0; offset /= 2) {
+        var += __shfl_down_sync(0xffffffff, var, offset);
+    }
+    var /= 32.0f;
     inv_std = rsqrtf(var + 1e-8f);
 
     for (int i = tid; i < 32; i += blockDim.x) {

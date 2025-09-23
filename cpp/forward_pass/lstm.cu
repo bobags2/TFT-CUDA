@@ -1,3 +1,9 @@
+#include <cuda_runtime.h>
+#include <cuda_fp16.h>
+#include <cmath>
+
+#define MAX_FEATURES 512
+
 // LSTM kernel with variable selection (simplified for clarity)
 __global__ void lstm_variable_selection(
     const float* x,          // (B, T, N)
@@ -12,49 +18,84 @@ __global__ void lstm_variable_selection(
 ) {
     int bid = blockIdx.x;
     int tid = threadIdx.x;
-    if (bid >= B) return;
+    if (bid >= B || N > MAX_FEATURES) return;
 
+    // Use shared memory for large arrays
+    __shared__ float s_h[MAX_FEATURES];
+    __shared__ float s_c[MAX_FEATURES];
+    __shared__ float s_selection[MAX_FEATURES];
+    
     // Initialize hidden/cell states
-    float h[N] = {0}, c[N] = {0};
+    if (tid < N) {
+        s_h[tid] = 0.0f;
+        s_c[tid] = 0.0f;
+    }
+    __syncthreads();
 
     for (int t = 0; t < T; t++) {
         // Variable selection: softmax over features
-        float selection[N] = {0};
-        for (int i = 0; i < N; i++) {
+        if (tid < N) {
             float sum = 0;
             for (int j = 0; j < N; j++)
-                sum += x[bid * T * N + t * N + j] * V_s[i * N + j];
-            selection[i] = expf(sum);
+                sum += x[bid * T * N + t * N + j] * V_s[tid * N + j];
+            s_selection[tid] = expf(sum);
         }
-        float sum_exp = 0;
-        for (int i = 0; i < N; i++) sum_exp += selection[i];
-        for (int i = 0; i < N; i++) selection[i] /= sum_exp;
-        for (int i = 0; i < N; i++) selection_gates[bid * T * N + t * N + i] = selection[i];
+        __syncthreads();
+        
+        // Normalize selection gates
+        if (tid == 0) {
+            float sum_exp = 0;
+            for (int i = 0; i < N; i++) sum_exp += s_selection[i];
+            for (int i = 0; i < N; i++) s_selection[i] /= sum_exp;
+        }
+        __syncthreads();
+        
+        // Store selection gates for interpretability
+        if (tid < N) {
+            selection_gates[bid * T * N + t * N + tid] = s_selection[tid];
+        }
 
-        // LSTM gates (input, forget, candidate, output)
-        float gates[4 * N] = {0};
-        for (int i = 0; i < N; i++) {
+        // LSTM gates computation using shared memory
+        __shared__ float s_gates[4 * MAX_FEATURES];
+        if (tid < 4 * N) {
+            s_gates[tid] = 0.0f;
+        }
+        __syncthreads();
+        
+        // Compute gates with proper indexing
+        if (tid < N) {
             for (int j = 0; j < 4 * N; j++) {
-                gates[j] += selection[i] * x[bid * T * N + t * N + i] * W_i[i * 4 * N + j];
-                gates[j] += h[i] * W_h[i * 4 * N + j];
+                atomicAdd(&s_gates[j], s_selection[tid] * x[bid * T * N + t * N + tid] * W_i[tid * 4 * N + j]);
+                atomicAdd(&s_gates[j], s_h[tid] * W_h[tid * 4 * N + j]);
             }
-            gates[i] += b[i]; // input gate
-            gates[i + N] += b[i + N]; // forget gate
-            gates[i + 2 * N] += b[i + 2 * N]; // candidate
-            gates[i + 3 * N] += b[i + 3 * N]; // output gate
         }
-
-        // Activation (tanh for candidate, sigmoid for others)
-        for (int i = 0; i < 2 * N; i++) gates[i] = 1.0f / (1.0f + expf(-gates[i]));
-        for (int i = 2 * N; i < 3 * N; i++) gates[i] = tanhf(gates[i]);
-        for (int i = 3 * N; i < 4 * N; i++) gates[i] = 1.0f / (1.0f + expf(-gates[i]));
-
-        // Update cell/hidden states
-        for (int i = 0; i < N; i++) {
-            c[i] = gates[i + N] * c[i] + gates[i] * gates[i + 2 * N];
-            h[i] = gates[i + 3 * N] * tanhf(c[i]);
-            h_out[bid * T * N + t * N + i] = h[i];
-            c_out[bid * T * N + t * N + i] = c[i];
+        __syncthreads();
+        
+        // Add biases
+        if (tid < 4 * N) {
+            s_gates[tid] += b[tid];
         }
+        __syncthreads();
+
+        // Activation functions
+        if (tid < 2 * N) s_gates[tid] = 1.0f / (1.0f + expf(-s_gates[tid])); // sigmoid for input/forget
+        if (tid >= 2 * N && tid < 3 * N) s_gates[tid] = tanhf(s_gates[tid]); // tanh for candidate
+        if (tid >= 3 * N && tid < 4 * N) s_gates[tid] = 1.0f / (1.0f + expf(-s_gates[tid])); // sigmoid for output
+        __syncthreads();
+
+        // Update cell/hidden states using shared memory
+        if (tid < N) {
+            float input_gate = s_gates[tid];
+            float forget_gate = s_gates[tid + N];
+            float candidate_gate = s_gates[tid + 2 * N];
+            float output_gate = s_gates[tid + 3 * N];
+            
+            s_c[tid] = forget_gate * s_c[tid] + input_gate * candidate_gate;
+            s_h[tid] = output_gate * tanhf(s_c[tid]);
+            
+            h_out[bid * T * N + t * N + tid] = s_h[tid];
+            c_out[bid * T * N + t * N + tid] = s_c[tid];
+        }
+        __syncthreads();
     }
 }

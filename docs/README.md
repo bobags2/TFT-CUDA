@@ -156,6 +156,7 @@ The system includes **temporal-aware feature engineering** to prevent data leaka
 - **Production-Ready**: Realistic performance metrics without data snooping
 
 Use `bash scripts/train_temporal.sh` for leakage-free training.
+
 - Bid-ask spread and skew
 - Liquidity depth proxies
 
@@ -218,7 +219,7 @@ config = {
 ```python
 training_config = {
     'optimizer': 'adamw',
-    'learning_rate': 1e-3,
+    'learning_rate': 9.38e-06,
     'batch_size': 64,
     'epochs': 100,
     'early_stopping': True,

@@ -1,7 +1,9 @@
-"""
-C++ header for TFT CUDA operations.
+/*
+TFT-CUDA public C++ interface
 Defines the interface between Python and CUDA kernels.
-"""
+Note: We use preallocated output tensors to avoid extra allocations and
+to align with Python call sites in `python/tft_model.py`.
+*/
 
 #pragma once
 
@@ -12,51 +14,67 @@ Defines the interface between Python and CUDA kernels.
 // Forward declarations for CUDA kernels
 namespace tft_cuda {
 
-// LSTM operations
-torch::Tensor lstm_variable_selection_forward(
-    torch::Tensor input,        // (B, T, N)
-    torch::Tensor W_i,          // (N, 4*N)
-    torch::Tensor W_h,          // (N, 4*N)
-    torch::Tensor bias,         // (4*N)
-    torch::Tensor V_s,          // (N, N)
+// LSTM operations (CUDA path is optional; Python falls back to PyTorch if unavailable)
+void lstm_variable_selection_forward(
+    const torch::Tensor& x,           // (B, T, N) FP16/FP32
+    const torch::Tensor& h0,          // (B, N)
+    const torch::Tensor& c0,          // (B, N)
+    const c10::optional<torch::Tensor>& weight_ih, // (4N, N) or (N,4N) depending on layout
+    const c10::optional<torch::Tensor>& weight_hh, // (4N, N)
+    const c10::optional<torch::Tensor>& bias_ih,   // (4N)
+    const c10::optional<torch::Tensor>& bias_hh,   // (4N)
+    torch::Tensor& output,             // (B, T, N)
+    torch::Tensor& hn,                 // (B, N)
+    torch::Tensor& cn,                 // (B, N)
     int batch_size,
     int seq_len,
     int hidden_size
 );
 
-std::vector<torch::Tensor> lstm_variable_selection_backward(
-    torch::Tensor grad_output,  // (B, T, N)
-    torch::Tensor input,
-    torch::Tensor hidden_states,
-    torch::Tensor cell_states,
-    torch::Tensor selection_gates,
-    torch::Tensor W_i,
-    torch::Tensor W_h,
-    torch::Tensor V_s,
+void lstm_variable_selection_backward(
+    const torch::Tensor& grad_output, // (B, T, N)
+    const torch::Tensor& grad_hn,     // (B, N)
+    const torch::Tensor& grad_cn,     // (B, N)
+    const torch::Tensor& x,           // (B, T, N)
+    const torch::Tensor& hidden_states, // (B, T, N)
+    const torch::Tensor& cell_states,   // (B, T, N)
+    const torch::Tensor& weight_ih,
+    const torch::Tensor& weight_hh,
+    torch::Tensor& grad_x,
+    torch::Tensor& grad_h0,
+    torch::Tensor& grad_c0,
+    torch::Tensor& grad_weight_ih,
+    torch::Tensor& grad_weight_hh,
+    c10::optional<torch::Tensor>& grad_bias_ih,
+    c10::optional<torch::Tensor>& grad_bias_hh,
     int batch_size,
     int seq_len,
     int hidden_size
 );
 
 // Multi-Head Attention operations
-torch::Tensor multi_head_attention_forward(
-    torch::Tensor Q,            // (B, T, H, D)
-    torch::Tensor K,            // (B, T, H, D)
-    torch::Tensor V,            // (B, T, H, D)
-    torch::Tensor attn_weights, // (B, T, H, T) - output
-    float theta,                // RoPE parameter
+void multi_head_attention_forward(
+    const torch::Tensor& Q,            // (B, T, H, D) FP16
+    const torch::Tensor& K,            // (B, T, H, D) FP16
+    const torch::Tensor& V,            // (B, T, H, D) FP16
+    torch::Tensor& output,             // (B, T, H, D) FP16
+    torch::Tensor& attn_weights,       // (B, T, H, T) FP32
+    float theta,                       // RoPE parameter
     int batch_size,
     int seq_len,
     int num_heads,
     int head_dim
 );
 
-std::vector<torch::Tensor> multi_head_attention_backward(
-    torch::Tensor grad_output,  // (B, T, H, D)
-    torch::Tensor Q,
-    torch::Tensor K,
-    torch::Tensor V,
-    torch::Tensor attn_weights, // from forward pass
+void multi_head_attention_backward(
+    const torch::Tensor& grad_output,  // (B, T, H, D) FP16
+    const torch::Tensor& attn_weights, // (B, T, H, T) FP32
+    const torch::Tensor& Q,            // (B, T, H, D) FP16
+    const torch::Tensor& K,            // (B, T, H, D) FP16
+    const torch::Tensor& V,            // (B, T, H, D) FP16
+    torch::Tensor& grad_Q,             // (B, T, H, D) FP32
+    torch::Tensor& grad_K,             // (B, T, H, D) FP32
+    torch::Tensor& grad_V,             // (B, T, H, D) FP32
     float theta,
     int batch_size,
     int seq_len,
@@ -65,98 +83,108 @@ std::vector<torch::Tensor> multi_head_attention_backward(
 );
 
 // Linear layer operations
-torch::Tensor linear_forward(
-    torch::Tensor input,        // (M, K)
-    torch::Tensor weight,       // (N, K)
-    torch::Tensor bias,         // (N)
+void linear_forward(
+    const torch::Tensor& input,        // (M, K) FP16
+    const torch::Tensor& weight,       // (K, N) FP16
+    const c10::optional<torch::Tensor>& bias, // (N) FP16
+    torch::Tensor& output,             // (M, N) FP16
     int M, int K, int N
 );
 
-std::vector<torch::Tensor> linear_backward(
-    torch::Tensor grad_output,  // (M, N)
-    torch::Tensor input,        // (M, K)
-    torch::Tensor weight,       // (N, K)
+void linear_backward(
+    const torch::Tensor& grad_output,  // (M, N) FP16
+    const torch::Tensor& input,        // (M, K) FP16
+    torch::Tensor& dL_dW,              // (K, N) FP32
+    torch::Tensor& dL_db,              // (N) FP32
     int M, int K, int N
 );
 
 // Quantile head operations
-torch::Tensor quantile_heads_forward(
-    torch::Tensor input,        // (B, T, D)
-    torch::Tensor weight,       // (D, Q)
-    torch::Tensor bias,         // (Q)
-    torch::Tensor quantiles,    // (Q)
+void quantile_heads_forward(
+    const torch::Tensor& input,        // (B, T, D) FP16/FP32
+    const torch::Tensor& weight,       // (D, Q)   FP16/FP32
+    const c10::optional<torch::Tensor>& bias,         // (Q)
+    torch::Tensor& output,             // (B, T, Q)
     int batch_size,
     int seq_len,
     int input_dim,
     int num_quantiles
 );
 
-torch::Tensor quantile_loss(
-    torch::Tensor predictions,  // (B, T, Q)
-    torch::Tensor targets,      // (B, T)
-    torch::Tensor quantiles,    // (Q)
+void quantile_loss(
+    const torch::Tensor& predictions,  // (B, T, Q) FP16/FP32
+    const torch::Tensor& targets,      // (B, T)    FP16/FP32
+    const torch::Tensor& quantiles,    // (Q)       FP16/FP32
+    torch::Tensor& losses,             // (B, T, Q) FP32
     int batch_size,
     int seq_len,
     int num_quantiles
 );
 
-std::vector<torch::Tensor> quantile_heads_backward(
-    torch::Tensor grad_output,  // (B, T, Q)
-    torch::Tensor input,        // (B, T, D)
-    torch::Tensor weight,       // (D, Q)
-    torch::Tensor quantiles,    // (Q)
-    torch::Tensor predictions,  // (B, T, Q)
-    torch::Tensor targets,      // (B, T)
+void quantile_heads_backward(
+    const torch::Tensor& grad_output,  // (B, T, Q) FP16/FP32
+    const torch::Tensor& input,        // (B, T, D) FP16/FP32
+    const torch::Tensor& weight,       // (D, Q)    FP16/FP32
+    torch::Tensor& dL_dinput,          // (B, T, D) FP32
+    torch::Tensor& dL_dW,              // (D, Q)    FP32
+    torch::Tensor& dL_db,              // (Q)       FP32
     int batch_size,
     int seq_len,
     int input_dim,
     int num_quantiles
 );
 
-// Static encoder operations
-torch::Tensor static_encoder_forward(
-    torch::Tensor input,        // (B, S)
-    torch::Tensor W1,           // (S, H)
-    torch::Tensor W2,           // (H, H)
-    torch::Tensor gamma,        // (H)
-    torch::Tensor beta,         // (H)
+// Static encoder operations (optional)
+void static_encoder_forward(
+    const torch::Tensor& input,        // (B, S) FP16
+    const torch::Tensor& W1,           // (S, 64) FP16
+    const torch::Tensor& W2,           // (64, 32) FP16
+    const torch::Tensor& gamma,        // (32) FP16
+    const torch::Tensor& beta,         // (32) FP16
+    torch::Tensor& output,             // (B, 32) FP16
     int batch_size,
-    int static_size,
-    int hidden_size
+    int static_size
 );
 
 // Layer normalization
-std::vector<torch::Tensor> layer_norm_backward(
-    torch::Tensor grad_output,  // (B, H)
-    torch::Tensor input,        // (B, H)
-    torch::Tensor gamma,        // (H)
-    torch::Tensor mean,         // (B)
-    torch::Tensor inv_std,      // (B)
+void layer_norm_backward(
+    const torch::Tensor& grad_output,  // (B, D) FP16
+    const torch::Tensor& input,        // (B, D) FP16
+    const torch::Tensor& gamma,        // (D)    FP16
+    const torch::Tensor& mean,         // (B)    FP32
+    const torch::Tensor& inv_std,      // (B)    FP32
+    torch::Tensor& dL_dgamma,          // (D)    FP32
+    torch::Tensor& dL_dbeta,           // (D)    FP32
+    torch::Tensor& dL_dinput,          // (B, D) FP32
     int batch_size,
     int hidden_size
 );
 
 // Interpretability operations
-torch::Tensor attention_aggregate(
-    torch::Tensor attn_weights, // (B, T, H, T)
+void attention_aggregate(
+    const torch::Tensor& attn_weights,   // (B, T, H, T) FP32
+    torch::Tensor& temporal_importance,  // (B, T) FP32
     int batch_size,
     int seq_len,
     int num_heads
 );
 
-torch::Tensor vsn_aggregate(
-    torch::Tensor selection_weights, // (B, T, N)
+void vsn_aggregate(
+    const torch::Tensor& selection_gates, // (B, T, N) FP32
+    torch::Tensor& static_importance,     // (B, N) FP32
+    const torch::Tensor& V_s,             // (N, N) FP32 (optional; identity if not used)
     int batch_size,
     int seq_len,
     int num_features
 );
 
-torch::Tensor static_embedding_importance(
-    torch::Tensor embeddings,   // (B, H)
-    torch::Tensor weights,      // (H, O)
+void static_embedding_importance(
+    const torch::Tensor& grads,            // (B, 32) FP32
+    const torch::Tensor& static_embeddings,// (B, 32) FP32
+    const torch::Tensor& W1,               // (S, 64) FP32
+    torch::Tensor& importance,             // (B, S) FP32
     int batch_size,
-    int hidden_size,
-    int output_size
+    int static_size
 );
 
 } // namespace tft_cuda

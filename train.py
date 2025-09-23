@@ -1,19 +1,13 @@
 #!/usr/bin/env python3
 """
 TFT Training Script with Trading Metrics
-=========================================
+========================================
 Production-grade training with financial loss functions and stability monitoring.
 """
 
-import sys
 import warnings
-import os
-warnings.filterwarnings("ignore")
-sys.path.insert(0, "python")
-
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import numpy as np
 from torch.utils.data import DataLoader, TensorDataset
 from typing import Dict, Optional, Tuple
@@ -21,7 +15,9 @@ import json
 from pathlib import Path
 from collections import deque
 
-from tft_model import TemporalFusionTransformer
+from python.tft_model import TemporalFusionTransformer
+
+warnings.filterwarnings("ignore")
 
 
 class TradingMetrics:
@@ -151,6 +147,9 @@ class TradingAwareLoss(nn.Module):
         return total_loss, components
 
 
+# Global flag for CUDA kernels usage within this module
+USE_CUDA_KERNELS = True
+
 class TFTTrainer:
     """Enhanced TFT trainer with trading metrics and stability."""
     
@@ -209,7 +208,7 @@ class TFTTrainer:
                     'static_features': torch.zeros(batch_size, 10, device=device)
                 }
                 
-                outputs = self.model(tft_inputs)
+                outputs = self.model(tft_inputs, use_cuda=USE_CUDA_KERNELS)
                 
                 # Robustly extract tensor predictions from model outputs
                 if isinstance(outputs, dict):
@@ -355,7 +354,7 @@ class TFTTrainer:
                         'static_features': torch.zeros(batch_size, 10, device=device)
                     }
                     
-                    outputs = self.model(tft_inputs)
+                    outputs = self.model(tft_inputs, use_cuda=USE_CUDA_KERNELS)
                     
                     # Robustly extract tensor predictions from model outputs (validation)
                     if isinstance(outputs, dict):
@@ -421,18 +420,35 @@ class TFTTrainer:
 
 def main():
     """Main training function with trading metrics."""
-    
+    import os
+    # Detect CUDA extension and device availability
+    backend_ok = False
     try:
-        import tft_cuda
-        print("TFT-CUDA: CUDA backend loaded successfully")
-    except ImportError:
-        print("⚠️  CUDA backend not available, using PyTorch only")
+        # Prefer explicit import name used by package; optional presence
+        __import__('tft_cuda_ext')
+        backend_ok = True
+    except Exception:
+        backend_ok = False
+    torch_cuda_ok = torch.cuda.is_available()
+    print(
+        "TFT-CUDA: CUDA backend loaded successfully" if backend_ok else
+        "⚠️  CUDA backend not available, using PyTorch only"
+    )
     
     print("🎯 TFT TRAINING WITH TRADING METRICS")
     print("="*60)
     
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device('cuda' if torch_cuda_ok else 'cpu')
     print(f"Device: {device}")
+    # Toggle CUDA custom kernels usage in model forward
+    global USE_CUDA_KERNELS
+    # Default: enable when both CUDA device and backend are available
+    USE_CUDA_KERNELS = bool(torch_cuda_ok and backend_ok)
+    # Optional override via env var
+    env_override = os.environ.get("TFT_USE_CUDA_KERNELS")
+    if env_override is not None:
+        USE_CUDA_KERNELS = env_override.strip().lower() in ("1", "true", "yes", "on")
+        print(f"TFT_USE_CUDA_KERNELS override -> {USE_CUDA_KERNELS}")
     
     # Load data
     X_train = np.load('data/X_train.npy')
@@ -481,6 +497,13 @@ def main():
     # Initialize model
     model = TemporalFusionTransformer(config)
     
+    # Enable CUDA autograd functions for optimized backward pass
+    model.use_cuda_autograd = True
+    print("✅ CUDA paths registered (with safe fallbacks)")
+    print(f"   - Attention: {'ENABLED' if USE_CUDA_KERNELS else 'PyTorch (CUDA disabled)'}")
+    print("   - LSTM: PyTorch implementation (CUDA path currently disabled)")  
+    print(f"   - Quantile Heads: {'ENABLED' if USE_CUDA_KERNELS else 'PyTorch (CUDA disabled)'}")
+    
     # ULTRA-conservative initialization to prevent explosions
     for name, param in model.named_parameters():
         if 'weight' in name:
@@ -501,16 +524,44 @@ def main():
     model.to(device)
     print(f"Model parameters: {sum(p.numel() for p in model.parameters()):,}")
     
-    # Optimizer with LR finder suggested rate
+    # Learning rate and scheduler from LR Finder recommendations
+    lr_cfg_path = Path('config/optimal_lr.json')
+    base_lr = 9.38e-06
+    # Default ratios
+    wd_ratio = 1e-2              # weight_decay = base_lr * 0.01
+    onecycle_max_lr_ratio = 10.0 # max_lr = base_lr * 10
+    cosine_eta_min_ratio = 1e-2  # eta_min = base_lr * 0.01
+    onecycle_pct_start = 0.1
+    max_lr = base_lr * onecycle_max_lr_ratio
+    if lr_cfg_path.exists():
+        try:
+            with open(lr_cfg_path, 'r') as f:
+                lr_cfg = json.load(f)
+            # Use suggested learning rate as base_lr
+            base_lr = float(lr_cfg.get('optimal_lr', base_lr))
+            # Optional ratios block for consistent scaling
+            ratios = lr_cfg.get('ratios', {})
+            wd_ratio = float(ratios.get('weight_decay_ratio', wd_ratio))
+            onecycle_max_lr_ratio = float(ratios.get('onecycle_max_lr_ratio', onecycle_max_lr_ratio))
+            cosine_eta_min_ratio = float(ratios.get('cosine_eta_min_ratio', cosine_eta_min_ratio))
+            onecycle = lr_cfg.get('scheduler_recommendations', {}).get('onecycle', {})
+            # Prefer provided max_lr, fallback to ratio of base
+            max_lr = float(onecycle.get('max_lr', base_lr * onecycle_max_lr_ratio))
+            onecycle_pct_start = float(onecycle.get('pct_start', onecycle_pct_start))
+            print(f"Using LR Finder config: base_lr={base_lr:.3e}, max_lr={max_lr:.3e}, wd={base_lr*wd_ratio:.3e} (ratios)")
+        except Exception as e:
+            print(f"⚠️  Failed to read LR config, using defaults: {e}")
+    else:
+        print(f"⚠️  LR config not found at {lr_cfg_path}, using defaults base_lr={base_lr:.3e}, max_lr={max_lr:.3e}, wd={base_lr*wd_ratio:.3e}")
+
+    # Optimizer (weight decay scaled to LR)
     optimizer = torch.optim.AdamW(
         model.parameters(),
-        lr=6.39e-06,  # LR finder suggested rate
+        lr=base_lr,
         betas=(0.9, 0.999),
         eps=1e-6,
-        weight_decay=6.39e-08  # Proportional weight decay (LR/100)
+        weight_decay=base_lr * wd_ratio
     )
-    
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=100, eta_min=6.39e-07)
     
     # Loss
     criterion = TradingAwareLoss(alpha=0.5, beta=0.3, gamma=0.2)
@@ -521,9 +572,37 @@ def main():
     
     train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True, pin_memory=True)
     val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False, pin_memory=True)
+
+    # Create trainer
+    trainer = TFTTrainer(model)
+
+    # Scheduler: OneCycle using LR Finder recommendation
+    try:
+        scheduler = torch.optim.lr_scheduler.OneCycleLR(
+            optimizer,
+            max_lr=max_lr,
+            epochs=100,
+            steps_per_epoch=len(train_loader),
+            pct_start=onecycle_pct_start,
+            anneal_strategy='cos',
+        )
+    except Exception as e:
+        print(f"⚠️  OneCycleLR setup failed ({e}), falling back to CosineAnnealingLR")
+        # Use configured eta_min if present in config; otherwise apply ratio to base_lr
+        eta_min = base_lr * cosine_eta_min_ratio
+        try:
+            with open(lr_cfg_path, 'r') as f:
+                lr_cfg = json.load(f)
+            cosine_rec = lr_cfg.get('scheduler_recommendations', {}).get('cosine_restarts', {})
+            eta_min = float(cosine_rec.get('eta_min', eta_min))
+        except Exception:
+            pass
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer, T_max=100, eta_min=eta_min
+        )
     
     # Trainer
-    trainer = TFTTrainer(model)
+    # trainer already created above
     
     # Training loop
     best_val_loss = float('inf')

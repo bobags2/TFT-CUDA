@@ -1,0 +1,1164 @@
+#include "tft_cuda.h"#include "tft_cuda.h"#include "tft_cuda.h"/*#include "tft_cuda.h"
+
+#include <cuda_runtime.h>
+
+#include <cuda_runtime.h>
+
+namespace tft_cuda {
+
+#include <cuda_fp16.h>
+
+// Forward pass functions - dummy implementations returning zeros
+
+torch::Tensor lstm_variable_selection_forward(#include <algorithm>
+
+    torch::Tensor input,
+
+    torch::Tensor W_i,namespace tft_cuda {TFT CUDA Implementation: C++ wrapper functions for CUDA kernels.#include <cuda_runtime.h>
+
+    torch::Tensor W_h,
+
+    torch::Tensor bias,namespace tft_cuda {
+
+    torch::Tensor V_s,
+
+    int batch_size,
+
+    int seq_len,
+
+    int input_size// Helper function for CUDA error checking
+
+) {
+
+    return torch::zeros_like(input);void checkCudaError(const char* operation) {torch::Tensor lstm_variable_selection_forward(This file contains the implementation functions declared in tft_cuda.h.#include <cuda_fp16.h>
+
+}
+
+    cudaError_t error = cudaGetLastError();
+
+torch::Tensor static_encoder_forward(
+
+    torch::Tensor input,    if (error != cudaSuccess) {    torch::Tensor input,
+
+    torch::Tensor weight,
+
+    torch::Tensor bias        fprintf(stderr, "CUDA error in %s: %s\n", operation, cudaGetErrorString(error));
+
+) {
+
+    return torch::zeros_like(input);    }    torch::Tensor W_i,Separates CUDA kernel launches (in .cu files) from C++ interface.#include <algorithm>  // For std::min
+
+}
+
+}
+
+torch::Tensor multi_head_attention_forward(
+
+    torch::Tensor query,    torch::Tensor W_h,
+
+    torch::Tensor key, 
+
+    torch::Tensor value,// Forward pass functions
+
+    torch::Tensor mask,
+
+    int batch_size,torch::Tensor lstm_variable_selection_forward(    torch::Tensor bias,*/
+
+    int seq_len,
+
+    int num_heads,    torch::Tensor input,
+
+    int head_dim
+
+) {    torch::Tensor W_i,    torch::Tensor V_s,
+
+    return torch::zeros_like(query);
+
+}    torch::Tensor W_h,
+
+
+
+torch::Tensor quantile_heads_forward(    torch::Tensor bias,    int batch_size,namespace tft_cuda {
+
+    torch::Tensor input,
+
+    torch::Tensor weights,    torch::Tensor V_s,
+
+    torch::Tensor bias,
+
+    int batch_size,    int batch_size,    int seq_len,
+
+    int seq_len,
+
+    int num_features,    int seq_len,
+
+    int num_quantiles
+
+) {    int input_size    int input_size#include "tft_cuda.h"
+
+    return torch::zeros_like(input);
+
+}) {
+
+
+
+torch::Tensor linear_forward(    return torch::zeros_like(input);) {
+
+    torch::Tensor input,
+
+    torch::Tensor weight,}
+
+    torch::Tensor bias
+
+) {    return torch::zeros_like(input);#include <algorithm>// Forward declarations of CUDA kernels
+
+    return torch::zeros_like(input);
+
+}torch::Tensor static_encoder_forward(
+
+
+
+// Backward pass functions - dummy implementations returning zeros    torch::Tensor input,}
+
+std::vector<torch::Tensor> linear_backward(
+
+    torch::Tensor grad_output,    torch::Tensor weight,
+
+    torch::Tensor input,
+
+    torch::Tensor weight,    torch::Tensor biasextern "C" {
+
+    int batch_size,
+
+    int input_size,) {
+
+    int output_size
+
+) {    return torch::zeros_like(input);std::vector<torch::Tensor> lstm_variable_selection_backward(
+
+    return {torch::zeros_like(input), torch::zeros_like(weight), torch::zeros_like(weight[0])};
+
+}}
+
+
+
+std::vector<torch::Tensor> lstm_backward(    torch::Tensor grad_output,// External CUDA wrapper function declarations    // Forward pass kernels
+
+    torch::Tensor grad_output,
+
+    torch::Tensor input,torch::Tensor multi_head_attention_forward(
+
+    torch::Tensor W_i,
+
+    torch::Tensor W_h,    torch::Tensor query,    torch::Tensor input,
+
+    torch::Tensor bias,
+
+    torch::Tensor hidden_state,    torch::Tensor key, 
+
+    torch::Tensor cell_state,
+
+    int batch_size,    torch::Tensor value,    torch::Tensor hidden_states,extern "C" {    __global__ void quantile_heads(
+
+    int seq_len,
+
+    int input_size,    torch::Tensor mask,
+
+    int hidden_size
+
+) {    int batch_size,    torch::Tensor cell_states,
+
+    return {torch::zeros_like(input), torch::zeros_like(W_i), torch::zeros_like(W_h), torch::zeros_like(bias)};
+
+}    int seq_len,
+
+
+
+std::vector<torch::Tensor> multi_head_attention_backward(    int num_heads,    torch::Tensor selection_gates,    void launch_quantile_heads(        const float* input, const float* W, const float* b,
+
+    torch::Tensor grad_output,
+
+    torch::Tensor query,    int head_dim
+
+    torch::Tensor key,
+
+    torch::Tensor value,) {    torch::Tensor W_i,
+
+    torch::Tensor attention_weights,
+
+    torch::Tensor mask,    return torch::zeros_like(query);
+
+    int batch_size,
+
+    int seq_len,}    torch::Tensor W_h,        const float* input, const float* W, const float* b,        float* outputs, const float* quantiles,
+
+    int num_heads,
+
+    int head_dim
+
+) {
+
+    return {torch::zeros_like(query), torch::zeros_like(key), torch::zeros_like(value)};torch::Tensor quantile_heads_forward(    torch::Tensor V_s,
+
+}
+
+    torch::Tensor input,
+
+std::vector<torch::Tensor> quantile_heads_backward(
+
+    torch::Tensor grad_output,    torch::Tensor weights,    int batch_size,        float* outputs, const float* quantiles,        const int B, const int T, const int D, const int Q
+
+    torch::Tensor input,
+
+    torch::Tensor weights,    torch::Tensor bias,
+
+    torch::Tensor bias,
+
+    torch::Tensor quantile_predictions,    int batch_size,    int seq_len,
+
+    torch::Tensor quantile_targets,
+
+    int batch_size,    int seq_len,
+
+    int seq_len,
+
+    int num_features,    int num_features,    int hidden_size        int B, int T, int D, int Q    );
+
+    int num_quantiles
+
+) {    int num_quantiles
+
+    return {torch::zeros_like(input), torch::zeros_like(weights), torch::zeros_like(bias)};
+
+}) {) {
+
+
+
+std::vector<torch::Tensor> layer_norm_backward(    return torch::zeros_like(input);
+
+    torch::Tensor grad_output,
+
+    torch::Tensor input,}    return {torch::zeros_like(input), torch::zeros_like(W_i), torch::zeros_like(W_h), torch::zeros_like(V_s), torch::zeros_like(V_s)};    );    
+
+    torch::Tensor weight,
+
+    torch::Tensor bias,
+
+    torch::Tensor mean,
+
+    int batch_size,torch::Tensor linear_forward(}
+
+    int features
+
+) {    torch::Tensor input,
+
+    return {torch::zeros_like(input), torch::zeros_like(weight), torch::zeros_like(bias)};
+
+}    torch::Tensor weight,        __global__ void lstm_variable_selection(
+
+
+
+// Interpretability functions - dummy implementations returning zeros    torch::Tensor bias
+
+torch::Tensor attention_aggregate(
+
+    torch::Tensor attention_weights,) {torch::Tensor multi_head_attention_forward(
+
+    torch::Tensor values,
+
+    int batch_size,    return torch::zeros_like(input);
+
+    int seq_len,
+
+    int num_heads}    torch::Tensor Q,    void launch_quantile_loss(        const float* input, const float* hidden, const float* cell,
+
+) {
+
+    return torch::zeros({batch_size, seq_len}, attention_weights.options());
+
+}
+
+// Backward pass functions    torch::Tensor K,
+
+torch::Tensor static_embedding_importance(
+
+    torch::Tensor embeddings,std::vector<torch::Tensor> linear_backward(
+
+    torch::Tensor importance_weights,
+
+    int batch_size,    torch::Tensor grad_output,    torch::Tensor V,        const float* preds, const float* targets, const float* quantiles,        const float* W_f, const float* W_i, const float* W_o, const float* W_g,
+
+    int num_features,
+
+    int embedding_dim    torch::Tensor input,
+
+) {
+
+    return torch::zeros({batch_size, num_features}, embeddings.options());    torch::Tensor weight,    torch::Tensor attn_weights,
+
+}
+
+    int batch_size,
+
+torch::Tensor vsn_aggregate(
+
+    torch::Tensor variable_selection,    int input_size,    float theta,        float* losses, int B, int T, int Q        const float* U_f, const float* U_i, const float* U_o, const float* U_g,
+
+    torch::Tensor feature_weights,
+
+    int batch_size,    int output_size
+
+    int seq_len,
+
+    int num_features) {    int batch_size,
+
+) {
+
+    return torch::zeros({batch_size, seq_len}, variable_selection.options());    return {torch::zeros_like(input), torch::zeros_like(weight), torch::zeros_like(weight[0])};
+
+}
+
+}    int seq_len,    );        const float* b_f, const float* b_i, const float* b_o, const float* b_g,
+
+} // namespace tft_cuda
+
+
+std::vector<torch::Tensor> lstm_backward(    int num_heads,
+
+    torch::Tensor grad_output,
+
+    torch::Tensor input,    int head_dim}        float* output, float* new_hidden, float* new_cell,
+
+    torch::Tensor W_i,
+
+    torch::Tensor W_h,) {
+
+    torch::Tensor bias,
+
+    torch::Tensor hidden_state,    return torch::zeros_like(Q);        const int B, const int T, const int H
+
+    torch::Tensor cell_state,
+
+    int batch_size,}
+
+    int seq_len,
+
+    int input_size,namespace tft_cuda {    );
+
+    int hidden_size
+
+) {std::vector<torch::Tensor> multi_head_attention_backward(
+
+    return {torch::zeros_like(input), torch::zeros_like(W_i), torch::zeros_like(W_h), torch::zeros_like(bias)};
+
+}    torch::Tensor grad_output,    
+
+
+
+std::vector<torch::Tensor> multi_head_attention_backward(    torch::Tensor Q,
+
+    torch::Tensor grad_output,
+
+    torch::Tensor query,    torch::Tensor K,// LSTM Variable Selection - Forward Pass    __global__ void multi_head_attention_mp(
+
+    torch::Tensor key,
+
+    torch::Tensor value,    torch::Tensor V,
+
+    torch::Tensor attention_weights,
+
+    torch::Tensor mask,    torch::Tensor attn_weights,torch::Tensor lstm_variable_selection_forward(        const float* query, const float* key, const float* value,
+
+    int batch_size,
+
+    int seq_len,    float theta,
+
+    int num_heads,
+
+    int head_dim    int batch_size,    torch::Tensor input,        const float* mask, float* output, float* attention_weights,
+
+) {
+
+    return {torch::zeros_like(query), torch::zeros_like(key), torch::zeros_like(value)};    int seq_len,
+
+}
+
+    int num_heads,    torch::Tensor W_i,        const int B, const int T, const int H, const int D
+
+std::vector<torch::Tensor> quantile_heads_backward(
+
+    torch::Tensor grad_output,    int head_dim
+
+    torch::Tensor input,
+
+    torch::Tensor weights,) {    torch::Tensor W_h,    );
+
+    torch::Tensor bias,
+
+    torch::Tensor quantile_predictions,    return {torch::zeros_like(Q), torch::zeros_like(K), torch::zeros_like(V)};
+
+    torch::Tensor quantile_targets,
+
+    int batch_size,}    torch::Tensor bias,    
+
+    int seq_len,
+
+    int num_features,
+
+    int num_quantiles
+
+) {torch::Tensor linear_forward(    torch::Tensor V_s,    __global__ void linear_forward_mp(
+
+    checkCudaError("quantile_heads_backward");
+
+    return {torch::zeros_like(input), torch::zeros_like(weights), torch::zeros_like(bias)};    torch::Tensor input,
+
+}
+
+    torch::Tensor weight,    int batch_size,        const float* input, const float* weight, const float* bias,
+
+torch::Tensor static_encoder_forward_impl(
+
+    torch::Tensor input,    torch::Tensor bias
+
+    torch::Tensor embeddings,
+
+    torch::Tensor static_features) {    int seq_len,        float* output, const int B, const int T, const int input_dim, const int output_dim
+
+) {
+
+    int B = input.size(0);    return torch::addmm(bias, input, weight.t());
+
+    int S = input.size(1);
+
+    int D = input.size(2);}    int input_size    );
+
+    
+
+    torch::Tensor output = torch::zeros_like(input);
+
+    checkCudaError("static_encoder_forward");
+
+    return output;std::vector<torch::Tensor> linear_backward() {    
+
+}
+
+    torch::Tensor grad_output,
+
+std::vector<torch::Tensor> layer_norm_backward(
+
+    torch::Tensor grad_output,    torch::Tensor input,    // For now, return zeros - will implement after testing basic structure    __global__ void static_encoder_forward(
+
+    torch::Tensor input,
+
+    torch::Tensor weight,    torch::Tensor weight,
+
+    torch::Tensor bias,
+
+    torch::Tensor mean,    int batch_size,    auto output = torch::zeros({batch_size, seq_len, input_size}, input.options());        const float* input, const float* embeddings,
+
+    int batch_size,
+
+    int features    int in_features,
+
+) {
+
+    torch::Tensor grad_input = torch::zeros_like(input);    int out_features    return output;        float* output, const int B, const int T, const int vocab_size, const int embed_dim
+
+    torch::Tensor grad_weight = torch::zeros_like(weight);
+
+    torch::Tensor grad_bias = torch::zeros_like(bias);) {
+
+    
+
+    checkCudaError("layer_norm_backward");    return {torch::zeros_like(input), torch::zeros_like(weight), torch::zeros_like(weight.select(0, 0))};}    );
+
+    return {grad_input, grad_weight, grad_bias};
+
+}}
+
+
+
+// Interpretability functions}
+
+torch::Tensor attention_aggregate(
+
+    torch::Tensor attention_weights,torch::Tensor quantile_heads_forward_full(
+
+    torch::Tensor values,
+
+    int batch_size,    torch::Tensor input,// LSTM Variable Selection - Backward Pass
+
+    int seq_len,
+
+    int num_heads    torch::Tensor weight,
+
+) {
+
+    torch::Tensor output = torch::zeros({batch_size, seq_len}, attention_weights.options());    torch::Tensor bias,std::vector<torch::Tensor> lstm_variable_selection_backward(// Helper function to get raw data pointer from tensor
+
+    checkCudaError("attention_aggregate");
+
+    return output;    torch::Tensor quantiles,
+
+}
+
+    int batch_size,    torch::Tensor grad_output,template<typename T>
+
+torch::Tensor static_embedding_importance(
+
+    torch::Tensor embeddings,    int seq_len,
+
+    torch::Tensor importance_weights,
+
+    int batch_size,    int input_dim,    torch::Tensor input,T* get_data_ptr(torch::Tensor tensor) {
+
+    int num_features,
+
+    int embedding_dim    int num_quantiles
+
+) {
+
+    torch::Tensor output = torch::zeros({batch_size, num_features}, embeddings.options());) {    torch::Tensor hidden_states,    return tensor.data_ptr<T>();
+
+    checkCudaError("static_embedding_importance");
+
+    return output;    return torch::zeros({batch_size, seq_len, num_quantiles}, input.options());
+
+}
+
+}    torch::Tensor cell_states,}
+
+torch::Tensor vsn_aggregate(
+
+    torch::Tensor variable_selection,
+
+    torch::Tensor feature_weights,
+
+    int batch_size,torch::Tensor quantile_loss(    torch::Tensor selection_gates,
+
+    int seq_len,
+
+    int num_features    torch::Tensor predictions,
+
+) {
+
+    torch::Tensor output = torch::zeros({batch_size, seq_len}, variable_selection.options());    torch::Tensor targets,    torch::Tensor W_i,// Helper function to check CUDA errors
+
+    checkCudaError("vsn_aggregate");
+
+    return output;    torch::Tensor quantiles,
+
+}
+
+    int batch_size,    torch::Tensor W_h,void checkCudaError(const char* msg) {
+
+} // namespace tft_cuda
+    int seq_len,
+
+    int num_quantiles    torch::Tensor V_s,    cudaError_t err = cudaGetLastError();
+
+) {
+
+    return torch::zeros({batch_size, seq_len, num_quantiles}, predictions.options());    int batch_size,    if (err != cudaSuccess) {
+
+}
+
+    int seq_len,        throw std::runtime_error(std::string(msg) + ": " + cudaGetErrorString(err));
+
+std::vector<torch::Tensor> quantile_heads_backward(
+
+    torch::Tensor grad_output,    int hidden_size    }
+
+    torch::Tensor input,
+
+    torch::Tensor weight,) {}
+
+    torch::Tensor bias,
+
+    torch::Tensor quantiles,    // Return gradient tensors initialized to zeros
+
+    torch::Tensor predictions,
+
+    int batch_size,    auto grad_input = torch::zeros_like(input);// LSTM Variable Selection Forward
+
+    int seq_len,
+
+    int input_dim,    auto grad_W_i = torch::zeros_like(W_i);torch::Tensor lstm_variable_selection_forward(
+
+    int num_quantiles
+
+) {    auto grad_W_h = torch::zeros_like(W_h);    torch::Tensor input,     // (B, T, N)
+
+    return {torch::zeros_like(input), torch::zeros_like(weight), torch::zeros_like(bias)};
+
+}    auto grad_bias = torch::zeros_like(V_s.select(0, 0));    torch::Tensor W_i,       // (N, 4*N) 
+
+
+
+torch::Tensor static_encoder_forward(    auto grad_V_s = torch::zeros_like(V_s);    torch::Tensor W_h,       // (N, 4*N)
+
+    torch::Tensor input,
+
+    torch::Tensor weight,        torch::Tensor bias,      // (4*N)
+
+    torch::Tensor bias
+
+) {    return {grad_input, grad_W_i, grad_W_h, grad_bias, grad_V_s};    torch::Tensor V_s,       // (N, N) for selection
+
+    return torch::zeros({input.size(0), input.size(1), weight.size(0)}, input.options());
+
+}}    int batch_size,
+
+
+
+std::vector<torch::Tensor> layer_norm_backward(    int seq_len,
+
+    torch::Tensor grad_output,
+
+    torch::Tensor input,// Multi-Head Attention - Forward Pass    int input_size
+
+    torch::Tensor gamma,
+
+    torch::Tensor beta,torch::Tensor multi_head_attention_forward() {
+
+    torch::Tensor saved_mean,
+
+    int batch_size,    torch::Tensor Q,    // For now, use simple CPU implementation - will add CUDA later
+
+    int features
+
+) {    torch::Tensor K,    auto options = torch::TensorOptions().dtype(input.dtype()).device(input.device());
+
+    return {torch::zeros_like(input), torch::zeros_like(gamma), torch::zeros_like(beta)};
+
+}    torch::Tensor V,    auto h_out = torch::zeros({batch_size, seq_len, input_size}, options);
+
+
+
+torch::Tensor attention_aggregate(    torch::Tensor attn_weights,    
+
+    torch::Tensor attention,
+
+    torch::Tensor values,    float theta,    // Simple matrix operations as placeholder
+
+    int batch_size,
+
+    int seq_len,    int batch_size,    auto reshaped = input.view({batch_size * seq_len, input_size});
+
+    int num_heads
+
+) {    int seq_len,    auto weights = W_i.slice(1, 0, input_size); // Take first input_size columns
+
+    return torch::zeros({batch_size, seq_len, values.size(-1)}, attention.options());
+
+}    int num_heads,    auto result = torch::mm(reshaped, weights.transpose(0, 1));
+
+
+
+torch::Tensor static_embedding_importance(    int head_dim    h_out = result.view({batch_size, seq_len, input_size});
+
+    torch::Tensor embeddings,
+
+    torch::Tensor attention_weights,) {    
+
+    int batch_size,
+
+    int num_features,    // Return zeros for now    return h_out;
+
+    int embedding_dim
+
+) {    auto output = torch::zeros({batch_size, seq_len, num_heads * head_dim}, Q.options());}
+
+    return torch::zeros({batch_size, num_features}, embeddings.options());
+
+}    return output;
+
+
+
+torch::Tensor vsn_aggregate(}// LSTM Variable Selection Backward
+
+    torch::Tensor selection_weights,
+
+    torch::Tensor features,std::vector<torch::Tensor> lstm_variable_selection_backward(
+
+    int batch_size,
+
+    int seq_len,// Multi-Head Attention - Backward Pass    torch::Tensor grad_output,  // (B, T, N)
+
+    int num_features
+
+) {std::vector<torch::Tensor> multi_head_attention_backward(    torch::Tensor input,
+
+    return torch::zeros({batch_size, seq_len, num_features}, selection_weights.options());
+
+}    torch::Tensor grad_output,    torch::Tensor hidden_states,
+
+
+
+} // namespace tft_cuda    torch::Tensor Q,    torch::Tensor cell_states,
+
+    torch::Tensor K,    torch::Tensor selection_gates,
+
+    torch::Tensor V,    torch::Tensor W_i,
+
+    torch::Tensor attn_weights,    torch::Tensor W_h,
+
+    float theta,    torch::Tensor V_s,
+
+    int batch_size,    int batch_size,
+
+    int seq_len,    int seq_len,
+
+    int num_heads,    int hidden_size
+
+    int head_dim) {
+
+) {    auto options = torch::TensorOptions().dtype(torch::kFloat32).device(grad_output.device());
+
+    auto grad_Q = torch::zeros_like(Q);    auto grad_input = torch::zeros({batch_size, seq_len, hidden_size}, options);
+
+    auto grad_K = torch::zeros_like(K);    auto grad_W_i = torch::zeros_like(W_i);
+
+    auto grad_V = torch::zeros_like(V);    auto grad_W_h = torch::zeros_like(W_h);
+
+    return {grad_Q, grad_K, grad_V};    auto grad_bias = torch::zeros({4 * hidden_size}, options);
+
+}    auto grad_V_s = torch::zeros_like(V_s);
+
+    
+
+// Linear Layer - Forward Pass    // TODO: Add CUDA kernel implementation
+
+torch::Tensor linear_forward(    checkCudaError("lstm_variable_selection_backward");
+
+    torch::Tensor input,    
+
+    torch::Tensor weight,    return {grad_input, grad_W_i, grad_W_h, grad_bias, grad_V_s};
+
+    torch::Tensor bias}
+
+) {
+
+    // Simple CPU implementation for now// Multi-Head Attention Forward  
+
+    return torch::addmm(bias, input, weight.t());torch::Tensor multi_head_attention_forward(
+
+}    torch::Tensor query,     // (B, T, H*D)
+
+    torch::Tensor key,       // (B, T, H*D)  
+
+// Linear Layer - Backward Pass    torch::Tensor value,     // (B, T, H*D)
+
+std::vector<torch::Tensor> linear_backward(    torch::Tensor attn_weights, // (B, H, T, T)
+
+    torch::Tensor grad_output,    float theta,             // Temperature scaling
+
+    torch::Tensor input,    int batch_size,
+
+    torch::Tensor weight,    int seq_len, 
+
+    int batch_size,    int num_heads,
+
+    int in_features,    int head_dim
+
+    int out_features) {
+
+) {    // For now, use simple CPU implementation - will add CUDA later
+
+    auto grad_input = torch::mm(grad_output, weight);    auto options = torch::TensorOptions().dtype(query.dtype()).device(query.device());
+
+    auto grad_weight = torch::mm(grad_output.t(), input);    auto output = torch::zeros({batch_size, seq_len, num_heads * head_dim}, options);
+
+    auto grad_bias = torch::sum(grad_output, 0);    
+
+    return {grad_input, grad_weight, grad_bias};    // Simple attention computation as placeholder
+
+}    auto scaled_query = query / std::sqrt(static_cast<float>(head_dim));
+
+    auto scores = torch::matmul(scaled_query, key.transpose(-2, -1));
+
+// Quantile Heads - Forward Pass (Using CUDA)    auto attn = torch::softmax(scores, -1);
+
+torch::Tensor quantile_heads_forward_full(    output = torch::matmul(attn, value);
+
+    torch::Tensor input,    
+
+    torch::Tensor weight,    return output;
+
+    torch::Tensor bias,}
+
+    torch::Tensor quantiles,
+
+    int batch_size,// Multi-Head Attention Backward
+
+    int seq_len,std::vector<torch::Tensor> multi_head_attention_backward(
+
+    int input_dim,    torch::Tensor grad_output,  // (B, T, H, D)
+
+    int num_quantiles    torch::Tensor Q,
+
+) {    torch::Tensor K,
+
+    // Allocate output tensor    torch::Tensor V,
+
+    auto output = torch::zeros({batch_size, seq_len, num_quantiles},     torch::Tensor attn_weights,
+
+                               torch::TensorOptions().dtype(torch::kFloat32).device(input.device()));    float theta,
+
+        int batch_size,
+
+    // Launch CUDA kernel    int seq_len,
+
+    launch_quantile_heads(    int num_heads,
+
+        input.data_ptr<float>(),    int head_dim
+
+        weight.data_ptr<float>(),) {
+
+        bias.data_ptr<float>(),    auto grad_Q = torch::zeros_like(Q);
+
+        output.data_ptr<float>(),    auto grad_K = torch::zeros_like(K);
+
+        quantiles.data_ptr<float>(),    auto grad_V = torch::zeros_like(V);
+
+        batch_size, seq_len, input_dim, num_quantiles    
+
+    );    // TODO: Add CUDA kernel implementation
+
+        checkCudaError("multi_head_attention_backward");
+
+    return output;    
+
+}    return {grad_Q, grad_K, grad_V};
+
+}
+
+// Quantile Loss
+
+torch::Tensor quantile_loss(// Linear Forward
+
+    torch::Tensor predictions,torch::Tensor linear_forward(
+
+    torch::Tensor targets,    torch::Tensor input,     // (B, ..., in_features)
+
+    torch::Tensor quantiles,    torch::Tensor weight,    // (out_features, in_features)
+
+    int batch_size,    torch::Tensor bias       // (out_features)
+
+    int seq_len,) {
+
+    int num_quantiles    int64_t batch_size = input.size(0);
+
+) {    int64_t in_features = weight.size(1);
+
+    auto losses = torch::zeros({batch_size, seq_len, num_quantiles}, predictions.options());    int64_t out_features = weight.size(0);
+
+        
+
+    launch_quantile_loss(    auto options = torch::TensorOptions().dtype(torch::kFloat16).device(input.device());
+
+        predictions.data_ptr<float>(),    auto output = torch::zeros({batch_size, out_features}, options);
+
+        targets.data_ptr<float>(),    
+
+        quantiles.data_ptr<float>(),    // TODO: Add CUDA kernel implementation
+
+        losses.data_ptr<float>(),    checkCudaError("linear_forward");
+
+        batch_size, seq_len, num_quantiles    
+
+    );    return output;
+
+    }
+
+    return losses;
+
+}// Linear Backward
+
+std::vector<torch::Tensor> linear_backward(
+
+// Quantile Heads - Backward Pass    torch::Tensor grad_output,  // (M, N)
+
+std::vector<torch::Tensor> quantile_heads_backward(    torch::Tensor input,        // (M, K)
+
+    torch::Tensor grad_output,    torch::Tensor weight,       // (N, K)
+
+    torch::Tensor input,    int M, int K, int N
+
+    torch::Tensor weight,) {
+
+    torch::Tensor bias,    auto options = torch::TensorOptions().dtype(torch::kFloat32).device(input.device());
+
+    torch::Tensor quantiles,    auto grad_input = torch::zeros_like(input);
+
+    torch::Tensor predictions,    auto grad_weight = torch::zeros_like(weight);
+
+    int batch_size,    auto grad_bias = torch::zeros({N}, options);
+
+    int seq_len,    
+
+    int input_dim,    // TODO: Add CUDA kernel implementation
+
+    int num_quantiles    checkCudaError("linear_backward");
+
+) {    
+
+    auto grad_input = torch::zeros_like(input);    return {grad_input, grad_weight, grad_bias};
+
+    auto grad_weight = torch::zeros_like(weight);}
+
+    auto grad_bias = torch::zeros_like(bias);
+
+    return {grad_input, grad_weight, grad_bias};// Quantile Heads Forward - Simple linear operation interface
+
+}torch::Tensor quantile_heads_forward(
+
+    torch::Tensor input,        // (B, D)
+
+// Static Encoder - Forward Pass    torch::Tensor weight,       // (Q, D)
+
+torch::Tensor static_encoder_forward(    torch::Tensor bias,         // (Q)
+
+    torch::Tensor input,    torch::Tensor output,       // (B, Q) - pre-allocated
+
+    torch::Tensor weight,    int batch_size,
+
+    torch::Tensor bias    int input_dim,
+
+) {    int output_dim
+
+    return torch::zeros({input.size(0), input.size(1), weight.size(0)}, input.options());) {
+
+}    // Simple matrix multiplication: output = input @ weight.T + bias
+
+    // This matches the expected interface for the autograd function
+
+// Layer Norm - Backward Pass    
+
+std::vector<torch::Tensor> layer_norm_backward(    torch::mm_out(output, input, weight.transpose(0, 1));
+
+    torch::Tensor grad_output,    output.add_(bias.unsqueeze(0).expand({batch_size, output_dim}));
+
+    torch::Tensor input,    
+
+    torch::Tensor gamma,    return output;
+
+    torch::Tensor beta,}
+
+    torch::Tensor saved_mean,
+
+    int batch_size,// Full Quantile Heads Forward with quantile values
+
+    int featurestorch::Tensor quantile_heads_forward_full(
+
+) {    torch::Tensor input,        // (B, T, D)
+
+    auto grad_input = torch::zeros_like(input);    torch::Tensor weight,       // (D, Q)
+
+    auto grad_gamma = torch::zeros_like(gamma);    torch::Tensor bias,         // (Q)
+
+    auto grad_beta = torch::zeros_like(beta);    torch::Tensor quantiles,    // (Q)
+
+    return {grad_input, grad_gamma, grad_beta};    int batch_size,
+
+}    int seq_len,
+
+    int input_dim,
+
+// Attention Aggregate    int num_quantiles
+
+torch::Tensor attention_aggregate() {
+
+    torch::Tensor attention,    // Convert to float32 for CUDA kernels
+
+    torch::Tensor values,    auto input_f32 = input.to(torch::kFloat32);
+
+    int batch_size,    auto weight_f32 = weight.to(torch::kFloat32);
+
+    int seq_len,    auto bias_f32 = bias.to(torch::kFloat32);
+
+    int num_heads    auto quantiles_f32 = quantiles.to(torch::kFloat32);
+
+) {    
+
+    return torch::zeros({batch_size, seq_len, values.size(-1)}, attention.options());    auto options = torch::TensorOptions().dtype(torch::kFloat32).device(input.device());
+
+}    auto output = torch::zeros({batch_size, seq_len, num_quantiles}, options);
+
+    
+
+// Static Embedding Importance    // Launch CUDA kernel
+
+torch::Tensor static_embedding_importance(    dim3 grid(batch_size, seq_len);
+
+    torch::Tensor embeddings,    dim3 block(num_quantiles);
+
+    torch::Tensor attention_weights,    
+
+    int batch_size,    quantile_heads<<<grid, block>>>(
+
+    int num_features,        get_data_ptr<float>(input_f32),
+
+    int embedding_dim        get_data_ptr<float>(weight_f32),
+
+) {        get_data_ptr<float>(bias_f32),
+
+    return torch::zeros({batch_size, num_features}, embeddings.options());        get_data_ptr<float>(output),
+
+}        get_data_ptr<float>(quantiles_f32),
+
+        batch_size, seq_len, input_dim, num_quantiles
+
+// VSN Aggregate    );
+
+torch::Tensor vsn_aggregate(    
+
+    torch::Tensor selection_weights,    checkCudaError("quantile_heads_forward_full");
+
+    torch::Tensor features,    
+
+    int batch_size,    // Convert back to original dtype if needed
+
+    int seq_len,    return output.to(input.dtype());
+
+    int num_features}
+
+) {
+
+    return torch::zeros({batch_size, seq_len, num_features}, selection_weights.options());// Quantile Loss
+
+}torch::Tensor quantile_loss(
+
+    torch::Tensor predictions,  // (B, T, Q)
+
+} // namespace tft_cuda    torch::Tensor targets,      // (B, T)
+    torch::Tensor quantiles,    // (Q)
+    int batch_size,
+    int seq_len,
+    int num_quantiles
+) {
+    auto options = torch::TensorOptions().dtype(torch::kFloat32).device(predictions.device());
+    auto loss = torch::zeros({1}, options);
+    
+    // TODO: Add CUDA kernel implementation
+    checkCudaError("quantile_loss");
+    
+    return loss;
+}
+
+// Quantile Heads Backward
+std::vector<torch::Tensor> quantile_heads_backward(
+    torch::Tensor grad_output,  // (B, T, Q)
+    torch::Tensor input,        // (B, T, D)
+    torch::Tensor weight,       // (D, Q)
+    torch::Tensor quantiles,    // (Q)
+    torch::Tensor predictions,  // (B, T, Q)
+    torch::Tensor targets,      // (B, T)
+    int batch_size,
+    int seq_len,
+    int input_dim,
+    int num_quantiles
+) {
+    auto options = torch::TensorOptions().dtype(torch::kFloat32).device(input.device());
+    auto grad_input = torch::zeros_like(input);
+    auto grad_weight = torch::zeros_like(weight);
+    auto grad_bias = torch::zeros({num_quantiles}, options);
+    
+    // TODO: Add CUDA kernel implementation
+    checkCudaError("quantile_heads_backward");
+    
+    return {grad_input, grad_weight, grad_bias};
+}
+
+// Static Encoder Forward
+torch::Tensor static_encoder_forward(
+    torch::Tensor input,     // (B, S)
+    torch::Tensor weights,   // Combined weights
+    torch::Tensor bias       // Combined bias  
+) {
+    int B = input.size(0);
+    int S = input.size(1);
+    
+    auto options = torch::TensorOptions().dtype(torch::kFloat16).device(input.device());
+    auto output = torch::zeros({B, 32}, options);
+    
+    // TODO: Add CUDA kernel implementation
+    checkCudaError("static_encoder_forward");
+    
+    return output;
+}
+
+// Layer Norm Backward
+std::vector<torch::Tensor> layer_norm_backward(
+    torch::Tensor grad_output,  // (B, H)
+    torch::Tensor input,        // (B, H)
+    torch::Tensor gamma,        // (H)
+    torch::Tensor mean,         // (B)
+    torch::Tensor inv_std,      // (B)
+    int batch_size,
+    int hidden_size
+) {
+    auto options = torch::TensorOptions().dtype(torch::kFloat32).device(input.device());
+    auto grad_input = torch::zeros_like(input);
+    auto grad_gamma = torch::zeros_like(gamma);
+    auto grad_beta = torch::zeros_like(gamma);
+    
+    // TODO: Add CUDA kernel implementation
+    checkCudaError("layer_norm_backward");
+    
+    return {grad_input, grad_gamma, grad_beta};
+}
+
+// Attention Aggregate  
+torch::Tensor attention_aggregate(
+    torch::Tensor attn_weights, // (B, H, T, T)
+    torch::Tensor values,       // (B, T, H*D)
+    int batch_size,
+    int seq_len,
+    int num_heads
+) {
+    auto options = torch::TensorOptions().dtype(torch::kFloat32).device(attn_weights.device());
+    auto aggregated = torch::zeros({batch_size, seq_len, num_heads}, options);
+    
+    // TODO: Add CUDA kernel implementation
+    checkCudaError("attention_aggregate");
+    
+    return aggregated;
+}
+
+// Static Embedding Importance
+torch::Tensor static_embedding_importance(
+    torch::Tensor embeddings,   // (B, N, D)
+    torch::Tensor gradients,    // (B, N, D)  
+    int batch_size,
+    int num_features,
+    int embed_dim
+) {
+    auto options = torch::TensorOptions().dtype(torch::kFloat32).device(embeddings.device());
+    auto importance = torch::zeros({batch_size, num_features}, options);
+    
+    // TODO: Add CUDA kernel implementation
+    checkCudaError("static_embedding_importance");
+    
+    return importance;
+}
+
+// VSN Aggregate
+torch::Tensor vsn_aggregate(
+    torch::Tensor selection_gates, // (B, T, N)
+    torch::Tensor features,        // (B, T, N)
+    int batch_size,
+    int seq_len, 
+    int num_features
+) {
+    auto options = torch::TensorOptions().dtype(torch::kFloat32).device(selection_gates.device());
+    auto aggregated = torch::zeros({batch_size, seq_len, num_features}, options);
+    
+    // TODO: Add CUDA kernel implementation
+    checkCudaError("vsn_aggregate");
+    
+    return aggregated;
+}
+
+} // namespace tft_cuda

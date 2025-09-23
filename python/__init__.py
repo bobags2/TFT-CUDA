@@ -34,13 +34,7 @@ from .loss import (
     create_tft_loss
 )
 
-from .trainer import (
-    TFTTrainer,
-    EarlyStopping,
-    GradientClipping,
-    MetricsTracker,
-    create_training_config
-)
+# Trainer utilities are not packaged here; import from your training script if needed.
 
 from .interpretability import (
     TFTInterpretability
@@ -48,7 +42,7 @@ from .interpretability import (
 
 # Try to import CUDA backend
 try:
-    import tft_cuda
+    import tft_cuda_ext as tft_cuda
     CUDA_AVAILABLE = True
     print("TFT-CUDA: CUDA backend loaded successfully")
 except ImportError:
@@ -78,12 +72,7 @@ __all__ = [
     "AdaptiveQuantileLoss",
     "create_tft_loss",
     
-    # Training infrastructure
-    "TFTTrainer",
-    "EarlyStopping",
-    "GradientClipping", 
-    "MetricsTracker",
-    "create_training_config",
+    # Training infrastructure (provided by user code)
     
     # Interpretability
     "TFTInterpretability",
@@ -154,8 +143,8 @@ DEFAULT_CONFIG = {
     },
     "training": {
         "optimizer": "adamw",
-        "learning_rate": 1e-3,
-        "weight_decay": 1e-4,
+    "learning_rate": 9.38e-06,
+        "weight_decay": 9.38e-08,
         "batch_size": 64,
         "epochs": 100,
         "early_stopping": True,

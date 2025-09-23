@@ -38,9 +38,9 @@ __global__ void lstm_variable_selection_backward_mp(
     cg::thread_block block = cg::this_thread_block();
     cg::thread_block_tile<32> warp = cg::tiled_partition<32>(block);
 
-    int b = blockIdx.x;  // Batch index
+    int batch_idx = blockIdx.x;  // Batch index
     int tid = threadIdx.x;  // Thread ID (0..TPB-1)
-    if (b >= B) return;
+    if (batch_idx >= B) return;
 
     // Shared memory for h, c, gates, selection (FP32 for precision)
     __shared__ float s_h[MAX_N], s_c[MAX_N], s_selection[MAX_N];
@@ -53,15 +53,15 @@ __global__ void lstm_variable_selection_backward_mp(
 
     // Load initial gradients from next time step
     for (int i = tid; i < N; i += blockDim.x) {
-        dh[i] = dL_dh_next[b * T * N + (T-1) * N + i];
-        dc[i] = dL_dc_next[b * T * N + (T-1) * N + i];
+        dh[i] = dL_dh_next[batch_idx * T * N + (T-1) * N + i];
+        dc[i] = dL_dc_next[batch_idx * T * N + (T-1) * N + i];
     }
     block.sync();
 
     // Backward loop: from T-1 to 0
     for (int t = T - 1; t >= 0; t--) {
-        int t_idx = b * T * N + t * N;
-        int t_gates_idx = b * T * N + t * N;
+        int t_idx = batch_idx * T * N + t * N;
+        int t_gates_idx = batch_idx * T * N + t * N;
 
         // Load selection gates (FP16 → FP32)
         for (int i = tid; i < N; i += blockDim.x) {
@@ -112,7 +112,7 @@ __global__ void lstm_variable_selection_backward_mp(
             dc[i] += dh[i] * o_gate * (1 - tanh_c_t * tanh_c_t);
 
             // dL/df = dL/dc * c_{t-1} * f'
-            float c_prev = (t > 0) ? __half2float(c_out[b * T * N + (t-1) * N + i]) : 0.0f;
+            float c_prev = (t > 0) ? __half2float(c_out[batch_idx * T * N + (t-1) * N + i]) : 0.0f;
             float df_gate = dc[i] * c_prev * f_gate * (1 - f_gate);
             db[N + i] += df_gate;
 
@@ -192,8 +192,8 @@ __global__ void lstm_variable_selection_backward_mp(
         atomicAdd(&dL_dV_s[i], dV_s[i]);
     }
     for (int i = tid; i < N; i += blockDim.x) {
-        atomicAdd(&dL_dx[b * T * N + i], dx_local[i]);
-        dL_dh_prev[b * N + i] = dh[i];
-        dL_dc_prev[b * N + i] = dc[i];
+        atomicAdd(&dL_dx[batch_idx * T * N + i], dx_local[i]);
+        dL_dh_prev[batch_idx * N + i] = dh[i];
+        dL_dc_prev[batch_idx * N + i] = dc[i];
     }
 }

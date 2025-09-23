@@ -7,8 +7,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Dict, List, Tuple, Optional, Union, Any
-import json
+from typing import Dict, List, Optional, Union, Any
 from pathlib import Path
 
 # Silent CUDA backend import
@@ -18,9 +17,9 @@ from contextlib import redirect_stdout
 CUDA_AVAILABLE = False
 tft_cuda: Optional[Any] = None  # ensure name is always defined
 try:
-	with redirect_stdout(io.StringIO()):
-		import tft_cuda  # Optional CUDA backend
-	CUDA_AVAILABLE = True
+    with redirect_stdout(io.StringIO()):
+        import tft_cuda_ext as tft_cuda  # Optional CUDA backend
+    CUDA_AVAILABLE = True
 except ImportError:
 	pass
 except Exception:
@@ -30,6 +29,234 @@ except Exception:
 # Print message only if not testing and CUDA is available
 if CUDA_AVAILABLE and not any('test' in arg.lower() for arg in sys.argv):
     print("TFT-CUDA: CUDA backend loaded successfully")
+
+
+# ============================================================================
+# Custom Autograd Functions for CUDA Backward Pass Optimization
+# ============================================================================
+
+class CUDAMultiHeadAttentionFunction(torch.autograd.Function):
+    """Custom autograd for CUDA multi-head attention with optimized backward pass."""
+
+    @staticmethod
+    def forward(ctx, Q, K, V, num_heads, scale):
+        """Wrapper forward to provide compatibility with multiple compiled signatures."""
+        batch_size, seq_len, d_model = Q.shape
+        d_k = d_model // num_heads
+
+        Q_reshaped = Q.view(batch_size, seq_len, num_heads, d_k).transpose(1, 2)
+        K_reshaped = K.view(batch_size, seq_len, num_heads, d_k).transpose(1, 2)
+        V_reshaped = V.view(batch_size, seq_len, num_heads, d_k).transpose(1, 2)
+
+        # Use FP32 to improve numerical stability; kernels accumulate in FP32
+        Q_cuda = Q_reshaped.transpose(1, 2).contiguous().float()
+        K_cuda = K_reshaped.transpose(1, 2).contiguous().float()
+        V_cuda = V_reshaped.transpose(1, 2).contiguous().float()
+
+        # Preferred new API with explicit output + attn buffers
+        try:
+            cuda = tft_cuda
+            if cuda is None:
+                raise RuntimeError("CUDA backend unavailable")
+            output = torch.zeros_like(Q_cuda)
+            attn_weights = torch.zeros(batch_size, seq_len, num_heads, seq_len,
+                                     dtype=torch.float32, device=Q.device)
+            cuda.multi_head_attention_forward(
+                Q_cuda, K_cuda, V_cuda, output, attn_weights,
+                scale, batch_size, seq_len, num_heads, d_k
+            )
+            output = output.transpose(1, 2).float()
+        except Exception:
+            try:
+                # Fallback v1: older API requiring an explicit output tensor as 4th arg, returns output tensor
+                output_buf = torch.zeros_like(Q_cuda)
+                cuda = tft_cuda
+                if cuda is None:
+                    raise RuntimeError("CUDA backend unavailable")
+                output_only = cuda.multi_head_attention_forward(
+                    Q_cuda, K_cuda, V_cuda, output_buf, scale, batch_size, seq_len, num_heads, d_k
+                )
+                # Some builds might ignore output_buf and return a tensor; handle both
+                out = output_only if isinstance(output_only, torch.Tensor) else output_buf
+                output = out.transpose(1, 2).float()
+                # Compute attention weights for interpretability and backward using PyTorch
+                Qh = Q_cuda.transpose(1, 2).float()  # (B, H, T, D)
+                Kh = K_cuda.transpose(1, 2).float()
+                scores = torch.matmul(Qh, Kh.transpose(-2, -1)) / np.sqrt(d_k)
+                attn_head = torch.softmax(scores, dim=-1)  # (B, H, T, T)
+                attn_weights = attn_head.transpose(1, 2).contiguous()  # (B, T, H, T)
+            except Exception:
+                # Fallback v2: older API returning only output without explicit output buffer
+                cuda = tft_cuda
+                if cuda is None:
+                    raise RuntimeError("CUDA backend unavailable")
+                output_only = cuda.multi_head_attention_forward(
+                    Q_cuda, K_cuda, V_cuda, scale, batch_size, seq_len, num_heads, d_k
+                )
+                output = output_only.transpose(1, 2).float()
+                Qh = Q_cuda.transpose(1, 2).float()
+                Kh = K_cuda.transpose(1, 2).float()
+                scores = torch.matmul(Qh, Kh.transpose(-2, -1)) / np.sqrt(d_k)
+                attn_head = torch.softmax(scores, dim=-1)
+                attn_weights = attn_head.transpose(1, 2).contiguous()
+
+        ctx.save_for_backward(Q_cuda, K_cuda, V_cuda, attn_weights)
+        ctx.num_heads = num_heads
+        ctx.scale = scale
+        ctx.batch_size = batch_size
+        ctx.seq_len = seq_len
+        ctx.d_k = d_k
+
+        return output.transpose(1, 2).contiguous().view(batch_size, seq_len, d_model), attn_weights
+    
+    @staticmethod
+    def backward(ctx, grad_output, grad_attn_weights):
+        Q_cuda, K_cuda, V_cuda, attn_weights = ctx.saved_tensors
+        
+        batch_size, seq_len = ctx.batch_size, ctx.seq_len
+        d_model = ctx.num_heads * ctx.d_k
+        
+        grad_output = grad_output.view(batch_size, seq_len, ctx.num_heads, ctx.d_k).contiguous().float()
+        
+        # Gradients are accumulated in FP32 per kernel contract
+        grad_Q = torch.zeros_like(Q_cuda, dtype=torch.float32)
+        grad_K = torch.zeros_like(K_cuda, dtype=torch.float32)
+        grad_V = torch.zeros_like(V_cuda, dtype=torch.float32)
+        
+        cuda = tft_cuda
+        if cuda is None or CUDA_AVAILABLE is False:
+            raise RuntimeError("CUDA backend unavailable")
+        cuda.multi_head_attention_backward(
+            grad_output, attn_weights, Q_cuda, K_cuda, V_cuda,
+            grad_Q, grad_K, grad_V,
+            ctx.scale, batch_size, seq_len, ctx.num_heads, ctx.d_k
+        )
+        
+        grad_Q = grad_Q.transpose(1, 2).reshape(batch_size, seq_len, d_model).float()
+        grad_K = grad_K.transpose(1, 2).reshape(batch_size, seq_len, d_model).float()
+        grad_V = grad_V.transpose(1, 2).reshape(batch_size, seq_len, d_model).float()
+        
+        return grad_Q, grad_K, grad_V, None, None
+
+
+class CUDALSTMVariableSelectionFunction(torch.autograd.Function):
+    """Custom autograd for CUDA LSTM with variable selection backward pass."""
+    
+    @staticmethod
+    def forward(ctx, x, h0, c0, weight_ih, weight_hh, bias_ih, bias_hh):
+        batch_size, seq_len, hidden_size = x.shape
+        
+        output = torch.zeros_like(x)
+        hn = torch.zeros_like(h0)
+        cn = torch.zeros_like(c0)
+        
+        hidden_states = torch.zeros(batch_size, seq_len, hidden_size, device=x.device)
+        cell_states = torch.zeros(batch_size, seq_len, hidden_size, device=x.device)
+        
+        cuda = tft_cuda
+        if cuda is None:
+            raise RuntimeError("CUDA backend unavailable")
+        cuda.lstm_variable_selection_forward(
+            x, h0, c0, weight_ih, weight_hh, bias_ih, bias_hh,
+            output, hn, cn,
+            batch_size, seq_len, hidden_size
+        )
+        
+        ctx.save_for_backward(x, h0, c0, weight_ih, weight_hh, bias_ih, bias_hh, 
+                            output, hn, cn, hidden_states, cell_states)
+        ctx.batch_size = batch_size
+        ctx.seq_len = seq_len
+        ctx.hidden_size = hidden_size
+        
+        return output, hn, cn
+    
+    @staticmethod
+    def backward(ctx, grad_output, grad_hn, grad_cn):
+        x, h0, c0, weight_ih, weight_hh, bias_ih, bias_hh, output, hn, cn, hidden_states, cell_states = ctx.saved_tensors
+        
+        grad_x = torch.zeros_like(x)
+        grad_h0 = torch.zeros_like(h0)
+        grad_c0 = torch.zeros_like(c0)
+        grad_weight_ih = torch.zeros_like(weight_ih)
+        grad_weight_hh = torch.zeros_like(weight_hh)
+        grad_bias_ih = torch.zeros_like(bias_ih) if bias_ih is not None else None
+        grad_bias_hh = torch.zeros_like(bias_hh) if bias_hh is not None else None
+        
+        cuda = tft_cuda
+        if cuda is None:
+            raise RuntimeError("CUDA backend unavailable")
+        cuda.lstm_variable_selection_backward(
+            grad_output, grad_hn, grad_cn,
+            x, hidden_states, cell_states, weight_ih, weight_hh,
+            grad_x, grad_h0, grad_c0, grad_weight_ih, grad_weight_hh,
+            grad_bias_ih, grad_bias_hh,
+            ctx.batch_size, ctx.seq_len, ctx.hidden_size
+        )
+        
+        return grad_x, grad_h0, grad_c0, grad_weight_ih, grad_weight_hh, grad_bias_ih, grad_bias_hh
+
+
+class CUDAQuantileHeadsFunction(torch.autograd.Function):
+    """Custom autograd for CUDA quantile heads with optimized backward pass."""
+    
+    @staticmethod
+    def forward(ctx, x, weight, bias):
+        batch_size, hidden_size = x.shape
+        output_size = weight.shape[0]
+        # Use T=1 logical time dimension to match CUDA kernel signature
+        B, T, D, Q = batch_size, 1, hidden_size, output_size
+        # Kernel runs in FP32 internally; allocate FP32 buffer then cast
+        output_3d = torch.empty(B, T, Q, device=x.device, dtype=torch.float32)
+        # Note: kernel expects weight as (D, Q); PyTorch stores as (Q, D)
+        w_t = weight.t().contiguous().float()
+        cuda = tft_cuda
+        if cuda is None:
+            raise RuntimeError("CUDA backend unavailable")
+        b = bias.float() if bias is not None else torch.zeros(Q, device=x.device, dtype=torch.float32)
+        cuda.quantile_heads_forward(
+            x.contiguous().float(), w_t, b,
+            output_3d, B, T, D, Q
+        )
+        output = output_3d.view(B, Q).to(x.dtype)
+        
+        ctx.save_for_backward(x, weight, bias)
+        ctx.batch_size = batch_size
+        ctx.hidden_size = hidden_size
+        ctx.output_size = output_size
+        
+        return output
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        x, weight, bias = ctx.saved_tensors
+        B, T, D, Q = ctx.batch_size, 1, ctx.hidden_size, ctx.output_size
+        # Allocate FP32 grads for accumulation
+        grad_x_3d = torch.zeros(B, T, D, device=x.device, dtype=torch.float32)
+        # Kernel accumulates grad_weight in (D, Q) layout; allocate accordingly then transpose back
+        grad_weight_dq = torch.zeros(D, Q, device=weight.device, dtype=torch.float32)
+        grad_bias = torch.zeros_like(bias, dtype=torch.float32) if bias is not None else torch.tensor([], device=x.device, dtype=torch.float32)
+
+        # Expand grad_output to (B,T,Q) in FP32 for kernel math
+        go = grad_output.view(B, T, Q).contiguous().float()
+        # Pass weight in (D, Q) as expected by kernel
+        w_t = weight.t().contiguous().float()
+        cuda = tft_cuda
+        if cuda is None:
+            raise RuntimeError("CUDA backend unavailable")
+        cuda.quantile_heads_backward(
+            go, x.contiguous(), w_t,
+            grad_x_3d, grad_weight_dq, grad_bias,
+            B, T, D, Q
+        )
+
+        # Cast back to original dtypes
+        grad_x = grad_x_3d.view(B, D).to(x.dtype)
+        grad_weight = grad_weight_dq.t().to(weight.dtype)
+        grad_bias = grad_bias.to(bias.dtype) if bias is not None else None
+        return grad_x, grad_weight, grad_bias
+
+
+# ============================================================================
 
 
 class GLU(nn.Module):
@@ -87,7 +314,7 @@ class GatedResidualNetwork(nn.Module):
 
 
 class VariableSelectionNetwork(nn.Module):
-    """Variable Selection Network (VSN) for feature selection."""
+    """Variable Selection Network (VSN) for feature selection with CUDA acceleration."""
     
     def __init__(self, input_size: int, num_inputs: int, hidden_size: int, dropout_rate: float = 0.1):
         super().__init__()
@@ -95,7 +322,6 @@ class VariableSelectionNetwork(nn.Module):
         self.num_inputs = num_inputs
         self.hidden_size = hidden_size
         
-        # Simplified approach - use adaptive layers
         self.selection_layer = nn.Sequential(
             nn.Linear(input_size * num_inputs, hidden_size),
             nn.ELU(),
@@ -104,7 +330,6 @@ class VariableSelectionNetwork(nn.Module):
             nn.Softmax(dim=-1)
         )
         
-        # Single transformation for all variables
         self.variable_transform = nn.Sequential(
             nn.Linear(input_size, hidden_size),
             nn.ELU(),
@@ -114,45 +339,66 @@ class VariableSelectionNetwork(nn.Module):
     def forward(self, flattened_inputs, processed_inputs):
         batch_size, seq_len, total_features = processed_inputs.shape
         
-        # Calculate actual dimensions
         if total_features % self.input_size == 0:
             actual_num_inputs = total_features // self.input_size
         else:
-            # If dimensions don't divide evenly, use the total as single input
             actual_num_inputs = 1
             self.input_size = total_features
         
-        # Get selection weights - handle dynamic input size
+        # Get selection weights
         if flattened_inputs.size(-1) != actual_num_inputs * self.input_size:
-            # Create adaptive layer
             adaptive_layer = nn.Linear(flattened_inputs.size(-1), actual_num_inputs, device=flattened_inputs.device)
             sparse_weights = F.softmax(adaptive_layer(flattened_inputs), dim=-1)
         else:
             sparse_weights = self.selection_layer(flattened_inputs)
         
-        # Process variables
+        # Use CUDA VSN aggregate if available
+        if CUDA_AVAILABLE and actual_num_inputs > 1:
+            try:
+                processed_inputs_reshaped = processed_inputs.view(batch_size, seq_len, actual_num_inputs, self.input_size)
+                transformed_features = []
+                for i in range(actual_num_inputs):
+                    var_input = processed_inputs_reshaped[:, :, i, :]
+                    transformed = self.variable_transform(var_input)
+                    transformed_features.append(transformed)
+                
+                transformed_features = torch.stack(transformed_features, dim=-2)
+                outputs = torch.zeros(batch_size, seq_len, self.hidden_size, device=processed_inputs.device)
+                
+                # CUDA VSN aggregation
+                cuda = tft_cuda
+                if cuda is None:
+                    raise RuntimeError("CUDA backend unavailable")
+                cuda.vsn_aggregate(
+                    transformed_features, sparse_weights.unsqueeze(1).unsqueeze(-1),
+                    outputs, batch_size, seq_len, actual_num_inputs, self.hidden_size
+                )
+            except Exception:
+                # Fallback to PyTorch
+                outputs = self._pytorch_vsn(processed_inputs, sparse_weights, batch_size, seq_len, actual_num_inputs)
+        else:
+            outputs = self._pytorch_vsn(processed_inputs, sparse_weights, batch_size, seq_len, actual_num_inputs)
+        
+        return outputs, sparse_weights
+    
+    def _pytorch_vsn(self, processed_inputs, sparse_weights, batch_size, seq_len, actual_num_inputs):
+        """PyTorch fallback for VSN."""
         if actual_num_inputs == 1:
-            # Single variable case
             transformed = self.variable_transform(processed_inputs)
             outputs = transformed * sparse_weights.unsqueeze(1).unsqueeze(-1)
         else:
-            # Multiple variables
             processed_inputs_reshaped = processed_inputs.view(batch_size, seq_len, actual_num_inputs, self.input_size)
-            
-            # Transform each variable
             transformed_features = []
             for i in range(actual_num_inputs):
                 var_input = processed_inputs_reshaped[:, :, i, :]
                 transformed = self.variable_transform(var_input)
                 transformed_features.append(transformed)
             
-            transformed_features = torch.stack(transformed_features, dim=-2)  # (batch, seq, num_vars, hidden)
-            
-            # Apply selection weights
-            weights_expanded = sparse_weights.unsqueeze(1).unsqueeze(-1)  # (batch, 1, num_vars, 1)
-            outputs = torch.sum(weights_expanded * transformed_features, dim=-2)  # (batch, seq, hidden)
+            transformed_features = torch.stack(transformed_features, dim=-2)
+            weights_expanded = sparse_weights.unsqueeze(1).unsqueeze(-1)
+            outputs = torch.sum(weights_expanded * transformed_features, dim=-2)
         
-        return outputs, sparse_weights
+        return outputs
 
 
 class MultiHeadAttention(nn.Module):
@@ -174,42 +420,59 @@ class MultiHeadAttention(nn.Module):
         self.dropout = nn.Dropout(dropout_rate)
         self.layer_norm = nn.LayerNorm(d_model)
         
-    def forward(self, query, key, value, mask=None, use_cuda=False):
+    def forward(self, query, key, value, mask=None, use_cuda=True):
         batch_size, seq_len = query.size(0), query.size(1)
-        
-        # Linear projections
-        Q = self.W_q(query).view(batch_size, seq_len, self.num_heads, self.d_k).transpose(1, 2)
-        K = self.W_k(key).view(batch_size, seq_len, self.num_heads, self.d_k).transpose(1, 2)
-        V = self.W_v(value).view(batch_size, seq_len, self.num_heads, self.d_k).transpose(1, 2)
-        
-        # Use CUDA kernel if available
+
+        # Linear projections in model space (B, T, d_model)
+        Q_lin = self.W_q(query)
+        K_lin = self.W_k(key)
+        V_lin = self.W_v(value)
+
+        # Use custom CUDA autograd if available
         if use_cuda and CUDA_AVAILABLE and tft_cuda is not None:
             try:
-                # Convert to expected format: (B, T, H, D)
-                Q_cuda = Q.transpose(1, 2).contiguous().half()
-                K_cuda = K.transpose(1, 2).contiguous().half()
-                V_cuda = V.transpose(1, 2).contiguous().half()
-                
-                output = torch.zeros_like(Q_cuda)
-                attn_weights = torch.zeros(batch_size, seq_len, self.num_heads, seq_len, 
-                                         dtype=torch.float32, device=query.device)
-                
-                tft_cuda.multi_head_attention_mp(
-                    Q_cuda, K_cuda, V_cuda, output, attn_weights, 
-                    10000.0, batch_size, seq_len, self.num_heads, self.d_k
+                # Gate: disable CUDA attention after first failure
+                if getattr(self, "_cuda_attn_disabled", False):
+                    raise RuntimeError("CUDA attention disabled due to earlier failure")
+                attention_output, attn_weights = CUDAMultiHeadAttentionFunction.apply(
+                    Q_lin, K_lin, V_lin, self.num_heads, float(1.0/np.sqrt(self.d_k))
                 )
-                
-                attention_output = output.transpose(1, 2).float()
+                # Health check: if CUDA returns near-zero tensors, fallback
+                if (attention_output.abs().sum() == 0) or (attn_weights.abs().sum() == 0):
+                    raise RuntimeError("CUDA attention produced all zeros; using PyTorch fallback")
             except Exception as e:
-                print(f"CUDA attention failed, falling back to PyTorch: {e}")
+                # Avoid dumping giant tensors from the extension's signature error
+                msg = str(e).splitlines()[0]
+                print(f"CUDA attention failed, falling back to PyTorch: {msg}")
+                self._cuda_attn_disabled = True
+                # Fallback path uses PyTorch implementation
+                Q = Q_lin.view(batch_size, seq_len, self.num_heads, self.d_k).transpose(1, 2)
+                K = K_lin.view(batch_size, seq_len, self.num_heads, self.d_k).transpose(1, 2)
+                V = V_lin.view(batch_size, seq_len, self.num_heads, self.d_k).transpose(1, 2)
                 attention_output, attn_weights = self._pytorch_attention(Q, K, V, mask)
         else:
+            Q = Q_lin.view(batch_size, seq_len, self.num_heads, self.d_k).transpose(1, 2)
+            K = K_lin.view(batch_size, seq_len, self.num_heads, self.d_k).transpose(1, 2)
+            V = V_lin.view(batch_size, seq_len, self.num_heads, self.d_k).transpose(1, 2)
             attention_output, attn_weights = self._pytorch_attention(Q, K, V, mask)
         
-        # Concatenate heads and project
-        attention_output = attention_output.transpose(1, 2).contiguous().view(
-            batch_size, seq_len, self.d_model
-        )
+        # Concatenate heads and ensure (B, T, d_model) layout before projection
+        if attention_output.dim() == 4:
+            # (B, H, T, D) or (B, T, H, D) -> (B, T, H*D)
+            # Try to detect which layout and normalize
+            if attention_output.size(1) == self.num_heads:
+                # (B, H, T, D)
+                attention_output = attention_output.transpose(1, 2).contiguous()
+            elif attention_output.size(2) == self.num_heads:
+                # (B, T, H, D)
+                pass  # already (B, T, H, D)
+            else:
+                # Unexpected layout; fall back to moving head dim to middle conservatively
+                attention_output = attention_output.transpose(1, 2).contiguous()
+            attention_output = attention_output.view(batch_size, seq_len, self.d_model)
+        elif attention_output.dim() == 3 and attention_output.size(-1) == self.d_k and attention_output.size(1) == self.num_heads:
+            # (B, H, T, D) missing a dim? normalize via unsqueeze
+            attention_output = attention_output.transpose(1, 2).contiguous().view(batch_size, seq_len, self.d_model)
         
         output = self.W_o(attention_output)
         output = self.dropout(output)
@@ -349,10 +612,16 @@ class TemporalFusionTransformer(nn.Module):
         batch_size = inputs['historical_features'].size(0)
         seq_len = inputs['historical_features'].size(1)
         device = inputs['historical_features'].device
-        
-        # Process static features
-        static_context = self.static_covariate_encoder(inputs.get('static_features', 
-            torch.zeros(batch_size, 10, device=device)))
+
+        # Prepare static features and context first (fix: ensure static_context is bound)
+        static_features = inputs.get(
+            'static_features',
+            torch.zeros(batch_size, self.config.get('static_input_size', 10), device=device)
+        )
+        static_context = self.static_covariate_encoder(static_features)
+
+        # Static feature importance (fallback to norm; CUDA path requires gradient/weights not available here)
+        static_importance = torch.norm(static_context, dim=-1)
         
         # Variable selection for historical features
         historical_flattened = inputs['historical_features'].reshape(batch_size, -1)
@@ -360,13 +629,14 @@ class TemporalFusionTransformer(nn.Module):
             historical_flattened, inputs['historical_features']
         )
         
-        # LSTM processing with optional CUDA acceleration
+        # LSTM processing with CUDA acceleration
         if use_cuda and CUDA_AVAILABLE:
             try:
-                # Use CUDA LSTM kernel
                 lstm_output = self._cuda_lstm_forward(historical_selected)
             except Exception as e:
-                print(f"CUDA LSTM failed, falling back to PyTorch: {e}")
+                # Avoid printing full pybind "Invoked with:" dumps
+                msg = str(e).splitlines()[0]
+                print(f"CUDA LSTM failed: {msg}")
                 lstm_output, _ = self.lstm(historical_selected)
         else:
             lstm_output, _ = self.lstm(historical_selected)
@@ -383,35 +653,51 @@ class TemporalFusionTransformer(nn.Module):
             enriched_sequence, enriched_sequence, enriched_sequence, 
             mask=causal_mask, use_cuda=use_cuda
         )
+
+        # Optional CUDA attention aggregation to get temporal importance per time step
+        temporal_importance = None
+        if use_cuda and CUDA_AVAILABLE and tft_cuda is not None:
+            try:
+                temporal_importance = torch.zeros(batch_size, seq_len, device=device, dtype=torch.float32)
+                cuda = tft_cuda
+                if cuda is None:
+                    raise RuntimeError("CUDA backend unavailable")
+                cuda.attention_aggregate(
+                    attention_weights.contiguous().float(), temporal_importance, batch_size, seq_len, self.num_heads
+                )
+            except Exception:
+                temporal_importance = attention_weights.mean(dim=2).mean(dim=-1)  # (B, T)
+        else:
+            temporal_importance = attention_weights.mean(dim=2).mean(dim=-1)  # (B, T)
         
         # Position-wise processing
         processed_output = self.positionwise_grn(attended_output)
         
-        # Generate predictions for each horizon
+        # Generate predictions for each horizon with CUDA acceleration
         predictions = {}
         for i, horizon in enumerate(self.prediction_horizon):
-            # Use last time step for prediction
-            last_hidden = processed_output[:, -1, :]  # (batch_size, hidden_size)
+            last_hidden = processed_output[:, -1, :]
             
             if use_cuda and CUDA_AVAILABLE:
                 try:
-                    # Use CUDA quantile heads
                     quantile_output = self._cuda_quantile_forward(last_hidden, i)
                 except Exception as e:
-                    print(f"CUDA quantile heads failed, falling back to PyTorch: {e}")
+                    print(f"CUDA quantile failed: {e}")
                     quantile_output = self.quantile_heads[i](last_hidden)
             else:
                 quantile_output = self.quantile_heads[i](last_hidden)
             
             predictions[f'horizon_{horizon}'] = quantile_output
         
-        # Interpretability outputs
+        # Interpretability outputs with CUDA-calculated importance
         interpretability = {
             'historical_variable_selection': historical_weights,
             'attention_weights': attention_weights,
-            'static_weights': torch.norm(static_context, dim=-1)  # Simple static importance
+            'temporal_importance': temporal_importance,
+            # fix: always use computed static_importance
+            'static_weights': static_importance
         }
-        
+
         return {
             'predictions': predictions,
             'interpretability': interpretability,
@@ -419,15 +705,29 @@ class TemporalFusionTransformer(nn.Module):
         }
     
     def _cuda_lstm_forward(self, x: torch.Tensor) -> torch.Tensor:
-        """CUDA-accelerated LSTM forward pass."""
-        # This would use the CUDA LSTM kernel
-        # For now, fallback to PyTorch
+        """CUDA-accelerated LSTM forward pass with variable selection."""
+        # Extension LSTM path is not implemented in current build; use PyTorch LSTM
         return self.lstm(x)[0]
     
     def _cuda_quantile_forward(self, x: torch.Tensor, head_idx: int) -> torch.Tensor:
         """CUDA-accelerated quantile heads forward pass."""
-        # This would use the CUDA quantile kernel
-        # For now, fallback to PyTorch
+        if CUDA_AVAILABLE:
+            try:
+                if getattr(self, "_cuda_quantile_disabled", False):
+                    raise RuntimeError("CUDA quantile disabled due to earlier failure")
+                # Use custom autograd function for forward and backward
+                output = CUDAQuantileHeadsFunction.apply(
+                    x, 
+                    self.quantile_heads[head_idx].weight,
+                    self.quantile_heads[head_idx].bias
+                )
+                if output.abs().sum() == 0:
+                    raise RuntimeError("CUDA quantile produced all zeros; using PyTorch fallback")
+                return output
+            except Exception as e:
+                print(f"CUDA quantile failed: {e}")
+                self._cuda_quantile_disabled = True
+                return self.quantile_heads[head_idx](x)
         return self.quantile_heads[head_idx](x)
     
     def predict(self, inputs: Dict[str, torch.Tensor], use_cuda: bool = False) -> Dict[str, torch.Tensor]:
@@ -507,8 +807,6 @@ class TFTLoss(nn.Module):
     
     def _compute_quantile_loss(self, predictions: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
         """Compute pinball loss for quantile predictions."""
-        batch_size = predictions.size(0)
-        
         if targets.dim() == 1:
             targets = targets.unsqueeze(-1)
         
